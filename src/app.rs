@@ -1,25 +1,17 @@
-/// We derive Deserialize/Serialize so we can persist app state on shutdown.
+use egui::Button;
+use log::info;
+use whist::game::players::Players;
+
 #[derive(serde::Deserialize, serde::Serialize)]
-#[serde(default)] // if we add new fields, give them default values when deserializing old state
-pub struct TemplateApp {
-    // Example stuff:
-    label: String,
-
-    #[serde(skip)] // This how you opt-out of serialization of a field
-    value: f32,
+#[serde(default)]
+#[derive(Default)]
+pub struct WhistApp {
+    players: Players,
+    player_field: String,
+    pending: bool,
 }
 
-impl Default for TemplateApp {
-    fn default() -> Self {
-        Self {
-            // Example stuff:
-            label: "Hello World!".to_owned(),
-            value: 2.7,
-        }
-    }
-}
-
-impl TemplateApp {
+impl WhistApp {
     /// Called once before the first frame.
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         // This is also where you can customize the look and feel of egui using
@@ -33,9 +25,13 @@ impl TemplateApp {
             Default::default()
         }
     }
+
+    pub fn reset_game(&mut self) {
+        *self = Default::default();
+    }
 }
 
-impl eframe::App for TemplateApp {
+impl eframe::App for WhistApp {
     /// Called by the framework to save state before shutdown.
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
         eframe::set_value(storage, eframe::APP_KEY, self);
@@ -45,7 +41,6 @@ impl eframe::App for TemplateApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Put your widgets into a `SidePanel`, `TopBottomPanel`, `CentralPanel`, `Window` or `Area`.
         // For inspiration and more examples, go to https://emilk.github.io/egui
-
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             // The top panel is often a good place for a menu bar:
 
@@ -62,29 +57,54 @@ impl eframe::App for TemplateApp {
                 }
 
                 egui::widgets::global_theme_preference_buttons(ui);
+
+                if ui.button("Reset").clicked() {
+                    (*self).reset_game();
+                }
             });
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
+            let Self {
+                players,
+                player_field,
+                pending,
+            } = self;
+
             // The central panel the region left after adding TopPanel's and SidePanel's
-            ui.heading("eframe template");
+            ui.heading("Whist Calculator");
 
             ui.horizontal(|ui| {
-                ui.label("Write something: ");
-                ui.text_edit_singleline(&mut self.label);
+                ui.label("Add a new palyer:");
+                ui.text_edit_singleline(player_field);
+                if ui
+                    .add_enabled(players.list.len() < 4, egui::Button::new("Add"))
+                    .on_disabled_hover_text("Already 4 players")
+                    .clicked()
+                {
+                    players.add_player(player_field.clone());
+                }
             });
 
-            ui.add(egui::Slider::new(&mut self.value, 0.0..=10.0).text("value"));
-            if ui.button("Increment").clicked() {
-                self.value += 1.0;
+            egui::Grid::new("players_list")
+                .striped(true)
+                .show(ui, |ui| {
+                    for player in &players.list {
+                        ui.label(format!("Player: {}", player.name));
+                        ui.label(format!("Score: {}", player.score));
+                        ui.end_row();
+                    }
+                });
+
+            if ui.add(egui::Button::new("select player")).clicked() {
+                *pending = true;
             }
-
-            ui.separator();
-
-            ui.add(egui::github_link_file!(
-                "https://github.com/emilk/eframe_template/blob/main/",
-                "Source code."
-            ));
+            if *pending {
+                let modal = names_modal(ui, &players.names());
+                if modal.should_close() {
+                    *pending = false;
+                }
+            }
 
             ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
                 powered_by_egui_and_eframe(ui);
@@ -106,4 +126,26 @@ fn powered_by_egui_and_eframe(ui: &mut egui::Ui) {
         );
         ui.label(".");
     });
+}
+
+fn names_modal(ui: &egui::Ui, names: &Vec<String>) -> egui::ModalResponse<()> {
+    egui::Modal::new("names_display".into()).show(ui.ctx(), |ui| {
+        for name in names {
+            if ui.add(Button::selectable(true, name)).clicked() {
+                info!("{name} clicked");
+            }
+        }
+
+        egui::Sides::new().show(
+            ui,
+            |_ui| {},
+            |ui| {
+                if ui.button("Ok").clicked() {
+                    // You can call `ui.close()` to close the modal.
+                    // (This causes the current modals `should_close` to return true)
+                    ui.close();
+                }
+            },
+        );
+    })
 }
