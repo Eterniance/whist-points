@@ -1,6 +1,6 @@
 use egui::Button;
-use log::info;
-use whist::game::players::Players;
+use log::{error, info};
+use whist::game::{GameError, players::Players};
 
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)]
@@ -81,8 +81,12 @@ impl eframe::App for WhistApp {
                     .add_enabled(players.list.len() < 4, egui::Button::new("Add"))
                     .on_disabled_hover_text("Already 4 players")
                     .clicked()
+                    && matches!(
+                        players.add_player(player_field.clone()),
+                        Err(GameError::PlayerAlreadyExists)
+                    )
                 {
-                    players.add_player(player_field.clone());
+                    error!("Player already exists");
                 }
             });
 
