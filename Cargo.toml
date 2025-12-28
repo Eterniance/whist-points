@@ -20,7 +20,8 @@ eframe = { version = "0.33.0", default-features = false, features = [
     "x11",           # To support older Linux distributions (restores one of the default features)
 ] }
 log = "0.4.29"
-whist = { path = "../whist-backend" }
+# whist = { path = "../whist-backend" }
+whist = { git = "https://github.com/eterniance/whist", branch = "main" }
 
 # You only need serde if you want app persistence:
 serde = { version = "1.0.219", features = ["derive"] }
