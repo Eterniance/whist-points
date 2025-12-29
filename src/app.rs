@@ -1,6 +1,6 @@
 use egui::Button;
 use log::{error, info};
-use whist::game::{GameError, players::Players};
+use whist::game::players::{Contractors, PlayerId, Players};
 
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)]
@@ -76,18 +76,25 @@ impl eframe::App for WhistApp {
 
             ui.horizontal(|ui| {
                 ui.label("Add a new palyer:");
-                ui.text_edit_singleline(player_field);
-                if ui
+                let response = ui.text_edit_singleline(player_field);
+                let enter_pressed =
+                    response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+
+                let button_clicked = ui
                     .add_enabled(players.list.len() < 4, egui::Button::new("Add"))
                     .on_disabled_hover_text("Already 4 players")
-                    .clicked()
-                    && matches!(
-                        players.add_player(player_field.clone()),
-                        Err(GameError::PlayerAlreadyExists)
-                    )
-                {
-                    error!("Player already exists");
+                    .clicked();
+
+                if enter_pressed || button_clicked {
+                    let player_name = player_field.clone();
+                    player_field.clear();
+
+                    if let Err(e) = players.add_player(player_name) {
+                        error!("{e}");
+                    }
                 }
+
+                response.request_focus();
             });
 
             egui::Grid::new("players_list")
@@ -108,6 +115,10 @@ impl eframe::App for WhistApp {
                 if modal.should_close() {
                     *pending = false;
                 }
+            }
+
+            if ui.button("add_score").clicked() {
+                players.update_score(&Contractors::Team(PlayerId::new(0), PlayerId::new(1)), 2);
             }
 
             ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
@@ -145,8 +156,6 @@ fn names_modal(ui: &egui::Ui, names: &Vec<String>) -> egui::ModalResponse<()> {
             |_ui| {},
             |ui| {
                 if ui.button("Ok").clicked() {
-                    // You can call `ui.close()` to close the modal.
-                    // (This causes the current modals `should_close` to return true)
                     ui.close();
                 }
             },
