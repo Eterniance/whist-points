@@ -1,13 +1,21 @@
 use egui::Button;
-use log::{error, info};
-use whist::game::players::{Contractors, PlayerId, Players};
+use log::{debug, error, info};
+use std::sync::Arc;
+use whist::game::{
+    players::{Contractors, PlayerId, Players},
+    rules::{Contract, GameRules, select_rules},
+};
+
+use crate::whist::HandBuilderGUI;
 
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)]
 #[derive(Default)]
 pub struct WhistApp {
-    players: Players,
+    players: Arc<Players>,
     player_field: String,
+    gamerules: Option<(GameRules, Vec<Arc<Contract>>)>,
+    hand_builder: HandBuilderGUI,
     pending: bool,
 }
 
@@ -28,6 +36,57 @@ impl WhistApp {
 
     pub fn reset_game(&mut self) {
         *self = Default::default();
+    }
+
+    pub fn select_rules_ui(&mut self, ui: &mut egui::Ui) {
+        let mut selected = None;
+        ui.label("Select gamemode:");
+        ui.selectable_value(&mut selected, Some(GameRules::Dutch), "Dutch")
+            .on_hover_text("Basic game mode");
+        ui.selectable_value(&mut selected, Some(GameRules::French), "French")
+            .on_hover_text("Some other rules");
+
+        if let Some(rules) = selected {
+            let modes = select_rules(&rules).into_iter().map(Arc::new).collect();
+            self.gamerules = Some((rules, modes));
+        }
+    }
+
+    pub fn select_players_ui(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal(|ui| {
+            ui.label("Add a new palyer:");
+            let response = ui.text_edit_singleline(&mut self.player_field);
+            let enter_pressed =
+                response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+
+            let button_clicked = ui
+                .add_enabled(self.players.list.len() < 4, egui::Button::new("Add"))
+                .on_disabled_hover_text("Already 4 players")
+                .clicked();
+
+            if enter_pressed || button_clicked {
+                let player_name = self.player_field.clone();
+                self.player_field.clear();
+
+                if let Some(players) = Arc::get_mut(&mut self.players) {
+                    match players.add_player(player_name) {
+                        Ok(4) => {
+                            self.hand_builder = HandBuilderGUI::new(Arc::clone(&self.players));
+                        }
+                        Ok(_) => {}
+                        Err(e) => {
+                            error!("{e}");
+                        }
+                    }
+                } else {
+                    debug!("Players not avaible");
+                }
+            }
+
+            response.request_focus();
+        });
+
+        player_grid(ui, &self.players);
     }
 }
 
@@ -65,61 +124,76 @@ impl eframe::App for WhistApp {
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
+            ui.heading("Whist Calculator");
+
+            if self.gamerules.is_none() {
+                self.select_rules_ui(ui);
+                return;
+            }
+
+            ui.label(format!(
+                "Current rules: {}",
+                self.gamerules
+                    .as_ref()
+                    .expect("Value set earlier")
+                    .0
+                    .clone()
+            ));
+
+            if self.players.list.len() != 4 {
+                self.select_players_ui(ui);
+                return;
+            }
+
             let Self {
                 players,
                 player_field,
                 pending,
+                gamerules,
+                hand_builder,
             } = self;
 
-            // The central panel the region left after adding TopPanel's and SidePanel's
-            ui.heading("Whist Calculator");
+            player_grid(ui, players);
 
-            ui.horizontal(|ui| {
-                ui.label("Add a new palyer:");
-                let response = ui.text_edit_singleline(player_field);
-                let enter_pressed =
-                    response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
-
-                let button_clicked = ui
-                    .add_enabled(players.list.len() < 4, egui::Button::new("Add"))
-                    .on_disabled_hover_text("Already 4 players")
-                    .clicked();
-
-                if enter_pressed || button_clicked {
-                    let player_name = player_field.clone();
-                    player_field.clear();
-
-                    if let Err(e) = players.add_player(player_name) {
-                        error!("{e}");
-                    }
-                }
-
-                response.request_focus();
+            egui::ComboBox::from_label("Select gamemode").show_ui(ui, |ui| {
+                for contract in &gamerules.as_ref().expect("Checked if set").1 {}
             });
 
-            egui::Grid::new("players_list")
-                .striped(true)
-                .show(ui, |ui| {
-                    for player in &players.list {
-                        ui.label(format!("Player: {}", player.name));
-                        ui.label(format!("Score: {}", player.score));
-                        ui.end_row();
-                    }
-                });
-
-            if ui.add(egui::Button::new("select player")).clicked() {
+            if ui.button("new_hand").clicked() {
                 *pending = true;
             }
             if *pending {
-                let modal = names_modal(ui, &players.names());
-                if modal.should_close() {
-                    *pending = false;
+                hand_builder.new_hand(Arc::clone(
+                    gamerules
+                        .as_ref()
+                        .expect("Checked if set")
+                        .1
+                        .first()
+                        .unwrap(),
+                ));
+
+                if let Ok(resp) = hand_builder.ui(ui) {
+                    if resp.should_close() {
+                        *pending = false;
+                    }
                 }
             }
 
-            if ui.button("add_score").clicked() {
-                players.update_score(&Contractors::Team(PlayerId::new(0), PlayerId::new(1)), 2);
-            }
+            // if ui.add(egui::Button::new("select player")).clicked() {
+            //     *pending = true;
+            // }
+            // if *pending {
+            //     let modal = names_modal(ui, &players.names());
+            //     if modal.should_close() {
+            //         *pending = false;
+            //     }
+            // }
+
+            // if ui.button("add_score").clicked() {
+            //     Arc::get_mut(players)
+            //         .expect("should be avaiblale")
+            //         .update_score(&Contractors::Team(PlayerId::new(0), PlayerId::new(1)), 2);
+            // }
 
             ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
                 powered_by_egui_and_eframe(ui);
@@ -161,4 +235,16 @@ fn names_modal(ui: &egui::Ui, names: &Vec<String>) -> egui::ModalResponse<()> {
             },
         );
     })
+}
+
+fn player_grid(ui: &mut egui::Ui, players: &Players) {
+    egui::Grid::new("players_list")
+        .striped(true)
+        .show(ui, |ui| {
+            for player in &players.list {
+                ui.label(format!("Player: {}", player.name));
+                ui.label(format!("Score: {}", player.score));
+                ui.end_row();
+            }
+        });
 }
