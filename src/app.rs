@@ -1,9 +1,11 @@
-use egui::Button;
-use log::{debug, error, info};
+use log::{debug, error};
 use std::sync::Arc;
-use whist::game::{
-    players::{Contractors, PlayerId, Players},
-    rules::{Contract, GameRules, select_rules},
+use whist::{
+    game::{
+        players::Players,
+        rules::{Contract, GameRules, select_rules},
+    },
+    gamemodes::Score as _,
 };
 
 use crate::whist::HandBuilderGUI;
@@ -12,11 +14,12 @@ use crate::whist::HandBuilderGUI;
 #[serde(default)]
 #[derive(Default)]
 pub struct WhistApp {
-    players: Arc<Players>,
-    player_field: String,
-    gamerules: Option<(GameRules, Vec<Arc<Contract>>)>,
-    hand_builder: HandBuilderGUI,
-    pending: bool,
+    pub players: Arc<Players>,
+    pub player_field: String,
+    pub gamerules: Option<(GameRules, Vec<Arc<Contract>>)>,
+    pub hand_builder: HandBuilderGUI,
+    pub current_contract_idx: usize,
+    pub pending: bool,
 }
 
 impl WhistApp {
@@ -28,7 +31,9 @@ impl WhistApp {
         // Load previous app state (if any).
         // Note that you must enable the `persistence` feature for this to work.
         if let Some(storage) = cc.storage {
-            eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default()
+            let mut app: Self = eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default();
+            app.hand_builder.players = Arc::clone(&app.players);
+            app
         } else {
             Default::default()
         }
@@ -88,6 +93,27 @@ impl WhistApp {
 
         player_grid(ui, &self.players);
     }
+
+    pub fn select_gamemode_ui(&mut self, ui: &mut egui::Ui) {
+        let contracts = &self.gamerules.as_ref().expect("Checked if set").1;
+        let current_contract_name = contracts
+            .get(self.current_contract_idx)
+            .expect("Index should be inbound")
+            .gamemode
+            .name()
+            .clone();
+        egui::ComboBox::from_label("Select gamemode")
+            .selected_text(current_contract_name)
+            .show_ui(ui, |ui| {
+                for (idx, contract) in contracts.iter().enumerate() {
+                    ui.selectable_value(
+                        &mut self.current_contract_idx,
+                        idx,
+                        contract.gamemode.name(),
+                    );
+                }
+            });
+    }
 }
 
 impl eframe::App for WhistApp {
@@ -145,55 +171,38 @@ impl eframe::App for WhistApp {
                 return;
             }
 
-            let Self {
-                players,
-                player_field,
-                pending,
-                gamerules,
-                hand_builder,
-            } = self;
+            // let Self {
+            //     players,
+            //     player_field,
+            //     pending,
+            //     gamerules,
+            //     hand_builder,
+            //     current_contract_idx,
+            // } = self;
 
-            player_grid(ui, players);
+            player_grid(ui, &self.players);
 
-            egui::ComboBox::from_label("Select gamemode").show_ui(ui, |ui| {
-                for contract in &gamerules.as_ref().expect("Checked if set").1 {}
-            });
+            self.select_gamemode_ui(ui);
 
             if ui.button("new_hand").clicked() {
-                *pending = true;
-            }
-            if *pending {
-                hand_builder.new_hand(Arc::clone(
-                    gamerules
+                self.pending = true;
+                self.hand_builder.new_hand(Arc::clone(
+                    self.gamerules
                         .as_ref()
                         .expect("Checked if set")
                         .1
-                        .first()
-                        .unwrap(),
+                        .get(self.current_contract_idx)
+                        .expect("Inbound"),
                 ));
-
-                if let Ok(resp) = hand_builder.ui(ui) {
+                debug!("{}", self.current_contract_idx);
+            }
+            if self.pending {
+                if let Ok(resp) = self.hand_builder.ui(ui) {
                     if resp.should_close() {
-                        *pending = false;
+                        self.pending = false;
                     }
                 }
             }
-
-            // if ui.add(egui::Button::new("select player")).clicked() {
-            //     *pending = true;
-            // }
-            // if *pending {
-            //     let modal = names_modal(ui, &players.names());
-            //     if modal.should_close() {
-            //         *pending = false;
-            //     }
-            // }
-
-            // if ui.button("add_score").clicked() {
-            //     Arc::get_mut(players)
-            //         .expect("should be avaiblale")
-            //         .update_score(&Contractors::Team(PlayerId::new(0), PlayerId::new(1)), 2);
-            // }
 
             ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
                 powered_by_egui_and_eframe(ui);
@@ -215,26 +224,6 @@ fn powered_by_egui_and_eframe(ui: &mut egui::Ui) {
         );
         ui.label(".");
     });
-}
-
-fn names_modal(ui: &egui::Ui, names: &Vec<String>) -> egui::ModalResponse<()> {
-    egui::Modal::new("names_display".into()).show(ui.ctx(), |ui| {
-        for name in names {
-            if ui.add(Button::selectable(true, name)).clicked() {
-                info!("{name} clicked");
-            }
-        }
-
-        egui::Sides::new().show(
-            ui,
-            |_ui| {},
-            |ui| {
-                if ui.button("Ok").clicked() {
-                    ui.close();
-                }
-            },
-        );
-    })
 }
 
 fn player_grid(ui: &mut egui::Ui, players: &Players) {
