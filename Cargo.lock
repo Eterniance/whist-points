@@ -3150,6 +3150,7 @@ dependencies = [
 [[package]]
 name = "whist"
 version = "0.1.0"
+source = "git+https://github.com/eterniance/whist?branch=main#cafcbd5ed891d6cae97d26d1ce8e51b706059875"
 dependencies = [
  "async-trait",
  "itertools",

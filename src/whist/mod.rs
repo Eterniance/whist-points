@@ -1,2 +1,3 @@
+pub mod hands;
 pub mod requester;
-pub use requester::HandBuilderGUI;
+pub use hands::HandBuilderGUI;

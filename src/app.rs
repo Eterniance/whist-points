@@ -8,18 +8,19 @@ use whist::{
     gamemodes::Score as _,
 };
 
-use crate::whist::HandBuilderGUI;
+use crate::whist::{HandBuilderGUI, hands::HandsHistoric};
 
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)]
 #[derive(Default)]
 pub struct WhistApp {
-    pub players: Arc<Players>,
+    pub players: Players,
     pub player_field: String,
     pub gamerules: Option<(GameRules, Vec<Arc<Contract>>)>,
     pub hand_builder: HandBuilderGUI,
     pub current_contract_idx: usize,
     pub pending: bool,
+    pub historic: HandsHistoric,
 }
 
 impl WhistApp {
@@ -32,7 +33,7 @@ impl WhistApp {
         // Note that you must enable the `persistence` feature for this to work.
         if let Some(storage) = cc.storage {
             let mut app: Self = eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default();
-            app.hand_builder.players = Arc::clone(&app.players);
+            app.hand_builder.players = app.players.clone();
             app
         } else {
             Default::default()
@@ -73,18 +74,14 @@ impl WhistApp {
                 let player_name = self.player_field.clone();
                 self.player_field.clear();
 
-                if let Some(players) = Arc::get_mut(&mut self.players) {
-                    match players.add_player(player_name) {
-                        Ok(4) => {
-                            self.hand_builder = HandBuilderGUI::new(Arc::clone(&self.players));
-                        }
-                        Ok(_) => {}
-                        Err(e) => {
-                            error!("{e}");
-                        }
+                match self.players.add_player(player_name) {
+                    Ok(4) => {
+                        self.hand_builder = HandBuilderGUI::new(self.players.clone());
                     }
-                } else {
-                    debug!("Players not avaible");
+                    Ok(_) => {}
+                    Err(e) => {
+                        error!("{e}");
+                    }
                 }
             }
 
@@ -171,15 +168,6 @@ impl eframe::App for WhistApp {
                 return;
             }
 
-            // let Self {
-            //     players,
-            //     player_field,
-            //     pending,
-            //     gamerules,
-            //     hand_builder,
-            //     current_contract_idx,
-            // } = self;
-
             player_grid(ui, &self.players);
 
             self.select_gamemode_ui(ui);
@@ -197,8 +185,19 @@ impl eframe::App for WhistApp {
                 debug!("{}", self.current_contract_idx);
             }
             if self.pending {
-                if let Ok(resp) = self.hand_builder.ui(ui) {
-                    if resp.should_close() {
+                if let Ok(resp) = self.hand_builder.ui(ui, &self.players) {
+                    if let Some(result) = resp.inner {
+                        debug!("Some result found");
+                        match result {
+                            Ok(hand) => {
+                                let score = hand.get_score();
+                                self.players.update_score(&hand.contractors, score);
+                                debug!("score : {score}");
+                            }
+                            Err(e) => error!("{e}"),
+                        }
+                    } else if resp.should_close() {
+                        debug!("No result");
                         self.pending = false;
                     }
                 }
