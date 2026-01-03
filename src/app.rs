@@ -26,6 +26,26 @@ pub struct WhistApp {
 impl WhistApp {
     /// Called once before the first frame.
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
+        cc.egui_ctx.set_pixels_per_point(1.2);
+
+        let mut style = (*cc.egui_ctx.style()).clone();
+        style
+            .text_styles
+            .get_mut(&egui::TextStyle::Body)
+            .expect("Default settings")
+            .size = 18.0;
+        style
+            .text_styles
+            .get_mut(&egui::TextStyle::Heading)
+            .expect("Default settings")
+            .size = 32.0;
+        style
+            .text_styles
+            .get_mut(&egui::TextStyle::Button)
+            .expect("Default settings")
+            .size = 18.0;
+        cc.egui_ctx.set_style(style);
+
         // This is also where you can customize the look and feel of egui using
         // `cc.egui_ctx.set_visuals` and `cc.egui_ctx.set_fonts`.
 
@@ -84,7 +104,6 @@ impl WhistApp {
                     }
                 }
             }
-
             response.request_focus();
         });
 
@@ -127,20 +146,7 @@ impl eframe::App for WhistApp {
             // The top panel is often a good place for a menu bar:
 
             egui::MenuBar::new().ui(ui, |ui| {
-                // NOTE: no File->Quit on web pages!
-                let is_web = cfg!(target_arch = "wasm32");
-                if !is_web {
-                    ui.menu_button("File", |ui| {
-                        if ui.button("Quit").clicked() {
-                            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-                        }
-                    });
-                    ui.add_space(16.0);
-                }
-
-                egui::widgets::global_theme_preference_buttons(ui);
-
-                if ui.button("Reset").clicked() {
+                if ui.button("Reset game").clicked() {
                     (*self).reset_game();
                 }
             });
@@ -162,6 +168,7 @@ impl eframe::App for WhistApp {
                     .0
                     .clone()
             ));
+            ui.separator();
 
             if self.players.list.len() != 4 {
                 self.select_players_ui(ui);
@@ -169,10 +176,11 @@ impl eframe::App for WhistApp {
             }
 
             player_grid(ui, &self.players);
+            ui.separator();
 
             self.select_gamemode_ui(ui);
 
-            if ui.button("new_hand").clicked() {
+            if ui.button("New hand").clicked() {
                 self.pending = true;
                 self.hand_builder.new_hand(Arc::clone(
                     self.gamerules
@@ -184,22 +192,22 @@ impl eframe::App for WhistApp {
                 ));
                 debug!("{}", self.current_contract_idx);
             }
-            if self.pending {
-                if let Ok(resp) = self.hand_builder.ui(ui, &self.players) {
-                    if let Some(result) = resp.inner {
-                        debug!("Some result found");
-                        match result {
-                            Ok(hand) => {
-                                let score = hand.get_score();
-                                self.players.update_score(&hand.contractors, score);
-                                debug!("score : {score}");
-                            }
-                            Err(e) => error!("{e}"),
+            if self.pending
+                && let Ok(resp) = self.hand_builder.ui(ui, &self.players)
+            {
+                if let Some(result) = resp.inner {
+                    debug!("Some result found");
+                    match result {
+                        Ok(hand) => {
+                            let score = hand.get_score();
+                            self.players.update_score(&hand.contractors, score);
+                            debug!("score : {score}");
                         }
-                    } else if resp.should_close() {
-                        debug!("No result");
-                        self.pending = false;
+                        Err(e) => error!("{e}"),
                     }
+                } else if resp.should_close() {
+                    debug!("No result");
+                    self.pending = false;
                 }
             }
 
