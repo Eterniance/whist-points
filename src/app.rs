@@ -1,26 +1,60 @@
-use egui::Button;
-use log::{error, info};
-use whist::game::players::{Contractors, PlayerId, Players};
+use log::{debug, error};
+use std::sync::Arc;
+use whist::{
+    game::{
+        players::Players,
+        rules::{Contract, GameRules, select_rules},
+    },
+    gamemodes::Score as _,
+};
+
+use crate::whist::{HandBuilderGUI, hands::HandsHistoric};
 
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)]
 #[derive(Default)]
 pub struct WhistApp {
-    players: Players,
-    player_field: String,
-    pending: bool,
+    pub players: Players,
+    pub player_field: String,
+    pub gamerules: Option<(GameRules, Vec<Arc<Contract>>)>,
+    pub hand_builder: HandBuilderGUI,
+    pub current_contract_idx: usize,
+    pub pending: bool,
+    pub historic: HandsHistoric,
 }
 
 impl WhistApp {
     /// Called once before the first frame.
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
+        cc.egui_ctx.set_pixels_per_point(1.2);
+
+        let mut style = (*cc.egui_ctx.style()).clone();
+        style
+            .text_styles
+            .get_mut(&egui::TextStyle::Body)
+            .expect("Default settings")
+            .size = 18.0;
+        style
+            .text_styles
+            .get_mut(&egui::TextStyle::Heading)
+            .expect("Default settings")
+            .size = 32.0;
+        style
+            .text_styles
+            .get_mut(&egui::TextStyle::Button)
+            .expect("Default settings")
+            .size = 18.0;
+        cc.egui_ctx.set_style(style);
+
         // This is also where you can customize the look and feel of egui using
         // `cc.egui_ctx.set_visuals` and `cc.egui_ctx.set_fonts`.
 
         // Load previous app state (if any).
         // Note that you must enable the `persistence` feature for this to work.
         if let Some(storage) = cc.storage {
-            eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default()
+            let mut app: Self = eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default();
+            app.hand_builder.players = app.players.clone();
+            app
         } else {
             Default::default()
         }
@@ -28,6 +62,73 @@ impl WhistApp {
 
     pub fn reset_game(&mut self) {
         *self = Default::default();
+    }
+
+    pub fn select_rules_ui(&mut self, ui: &mut egui::Ui) {
+        let mut selected = None;
+        ui.label("Select gamemode:");
+        ui.selectable_value(&mut selected, Some(GameRules::Dutch), "Dutch")
+            .on_hover_text("Basic game mode");
+        ui.selectable_value(&mut selected, Some(GameRules::French), "French")
+            .on_hover_text("Some other rules");
+
+        if let Some(rules) = selected {
+            let modes = select_rules(&rules).into_iter().map(Arc::new).collect();
+            self.gamerules = Some((rules, modes));
+        }
+    }
+
+    pub fn select_players_ui(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal(|ui| {
+            ui.label("Add a new player:");
+            let response = ui.text_edit_singleline(&mut self.player_field);
+            let enter_pressed =
+                response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+
+            let button_clicked = ui
+                .add_enabled(self.players.list.len() < 4, egui::Button::new("Add"))
+                .on_disabled_hover_text("Already 4 players")
+                .clicked();
+
+            if enter_pressed || button_clicked {
+                let player_name = self.player_field.clone();
+                self.player_field.clear();
+
+                match self.players.add_player(player_name) {
+                    Ok(4) => {
+                        self.hand_builder = HandBuilderGUI::new(self.players.clone());
+                    }
+                    Ok(_) => {}
+                    Err(e) => {
+                        error!("{e}");
+                    }
+                }
+            }
+            response.request_focus();
+        });
+
+        player_grid(ui, &self.players);
+    }
+
+    pub fn select_gamemode_ui(&mut self, ui: &mut egui::Ui) {
+        let contracts = &self.gamerules.as_ref().expect("Checked if set").1;
+        let current_contract_name = contracts
+            .get(self.current_contract_idx)
+            .expect("Index should be inbound")
+            .gamemode
+            .name()
+            .clone();
+        egui::ComboBox::from_label("Select gamemode")
+            .selected_text(current_contract_name)
+            .show_ui(ui, |ui| {
+                for (idx, contract) in contracts.iter().enumerate() {
+                    ui.selectable_value(
+                        &mut self.current_contract_idx,
+                        idx,
+                        contract.gamemode.name(),
+                    );
+                }
+            });
     }
 }
 
@@ -45,80 +146,69 @@ impl eframe::App for WhistApp {
             // The top panel is often a good place for a menu bar:
 
             egui::MenuBar::new().ui(ui, |ui| {
-                // NOTE: no File->Quit on web pages!
-                let is_web = cfg!(target_arch = "wasm32");
-                if !is_web {
-                    ui.menu_button("File", |ui| {
-                        if ui.button("Quit").clicked() {
-                            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-                        }
-                    });
-                    ui.add_space(16.0);
-                }
-
-                egui::widgets::global_theme_preference_buttons(ui);
-
-                if ui.button("Reset").clicked() {
+                if ui.button("Reset game").clicked() {
                     (*self).reset_game();
                 }
             });
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            let Self {
-                players,
-                player_field,
-                pending,
-            } = self;
-
-            // The central panel the region left after adding TopPanel's and SidePanel's
             ui.heading("Whist Calculator");
 
-            ui.horizontal(|ui| {
-                ui.label("Add a new palyer:");
-                let response = ui.text_edit_singleline(player_field);
-                let enter_pressed =
-                    response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
-
-                let button_clicked = ui
-                    .add_enabled(players.list.len() < 4, egui::Button::new("Add"))
-                    .on_disabled_hover_text("Already 4 players")
-                    .clicked();
-
-                if enter_pressed || button_clicked {
-                    let player_name = player_field.clone();
-                    player_field.clear();
-
-                    if let Err(e) = players.add_player(player_name) {
-                        error!("{e}");
-                    }
-                }
-
-                response.request_focus();
-            });
-
-            egui::Grid::new("players_list")
-                .striped(true)
-                .show(ui, |ui| {
-                    for player in &players.list {
-                        ui.label(format!("Player: {}", player.name));
-                        ui.label(format!("Score: {}", player.score));
-                        ui.end_row();
-                    }
-                });
-
-            if ui.add(egui::Button::new("select player")).clicked() {
-                *pending = true;
-            }
-            if *pending {
-                let modal = names_modal(ui, &players.names());
-                if modal.should_close() {
-                    *pending = false;
-                }
+            if self.gamerules.is_none() {
+                self.select_rules_ui(ui);
+                return;
             }
 
-            if ui.button("add_score").clicked() {
-                players.update_score(&Contractors::Team(PlayerId::new(0), PlayerId::new(1)), 2);
+            ui.label(format!(
+                "Current rules: {}",
+                self.gamerules
+                    .as_ref()
+                    .expect("Value set earlier")
+                    .0
+                    .clone()
+            ));
+            ui.separator();
+
+            if self.players.list.len() != 4 {
+                self.select_players_ui(ui);
+                return;
+            }
+
+            player_grid(ui, &self.players);
+            ui.separator();
+
+            self.select_gamemode_ui(ui);
+
+            if ui.button("New hand").clicked() {
+                self.pending = true;
+                self.hand_builder.new_hand(Arc::clone(
+                    self.gamerules
+                        .as_ref()
+                        .expect("Checked if set")
+                        .1
+                        .get(self.current_contract_idx)
+                        .expect("Inbound"),
+                ));
+                debug!("{}", self.current_contract_idx);
+            }
+            if self.pending
+                && let Ok(resp) = self.hand_builder.ui(ui, &self.players)
+            {
+                if let Some(result) = resp.inner {
+                    debug!("Some result found");
+                    match result {
+                        Ok(hand) => {
+                            let score = hand.get_score();
+                            self.players.update_score(&hand.contractors, score);
+                            debug!("score : {score}");
+                        }
+                        Err(e) => error!("{e}"),
+                    }
+                } else if resp.should_close() {
+                    debug!("No result");
+                    self.pending = false;
+                }
             }
 
             ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
@@ -143,22 +233,14 @@ fn powered_by_egui_and_eframe(ui: &mut egui::Ui) {
     });
 }
 
-fn names_modal(ui: &egui::Ui, names: &Vec<String>) -> egui::ModalResponse<()> {
-    egui::Modal::new("names_display".into()).show(ui.ctx(), |ui| {
-        for name in names {
-            if ui.add(Button::selectable(true, name)).clicked() {
-                info!("{name} clicked");
+fn player_grid(ui: &mut egui::Ui, players: &Players) {
+    egui::Grid::new("players_list")
+        .striped(true)
+        .show(ui, |ui| {
+            for player in &players.list {
+                ui.label(format!("Player: {}", player.name));
+                ui.label(format!("Score: {}", player.score));
+                ui.end_row();
             }
-        }
-
-        egui::Sides::new().show(
-            ui,
-            |_ui| {},
-            |ui| {
-                if ui.button("Ok").clicked() {
-                    ui.close();
-                }
-            },
-        );
-    })
+        });
 }
