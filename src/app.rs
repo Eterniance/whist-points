@@ -80,7 +80,7 @@ impl WhistApp {
 
     pub fn select_players_ui(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
-            ui.label("Add a new palyer:");
+            ui.label("Add a new player:");
             let response = ui.text_edit_singleline(&mut self.player_field);
             let enter_pressed =
                 response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
