@@ -1,14 +1,11 @@
 use log::{debug, error};
-use std::sync::Arc;
-use whist::{
-    game::{
-        players::Players,
-        rules::{Contract, GameRules, select_rules},
-    },
-    gamemodes::Score as _,
+use std::rc::Rc;
+use whist::game::{
+    players::Players,
+    rules::{Contract, GameRules, select_rules},
 };
 
-use crate::whist::{HandBuilderGUI, hands::HandsHistoric};
+use crate::whist::HandBuilderGUI;
 
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)]
@@ -16,11 +13,11 @@ use crate::whist::{HandBuilderGUI, hands::HandsHistoric};
 pub struct WhistApp {
     pub players: Players,
     pub player_field: String,
-    pub gamerules: Option<(GameRules, Vec<Arc<Contract>>)>,
+    pub gamerules: Option<(GameRules, Vec<Rc<Contract>>)>,
     pub hand_builder: HandBuilderGUI,
     pub current_contract_idx: usize,
     pub pending: bool,
-    pub historic: HandsHistoric,
+    // pub historic: HandsHistoric,
 }
 
 impl WhistApp {
@@ -73,7 +70,7 @@ impl WhistApp {
             .on_hover_text("Some other rules");
 
         if let Some(rules) = selected {
-            let modes = select_rules(&rules).into_iter().map(Arc::new).collect();
+            let modes = select_rules(&rules).into_iter().map(Rc::new).collect();
             self.gamerules = Some((rules, modes));
         }
     }
@@ -182,7 +179,7 @@ impl eframe::App for WhistApp {
 
             if ui.button("New hand").clicked() {
                 self.pending = true;
-                self.hand_builder.new_hand(Arc::clone(
+                self.hand_builder.new_hand(Rc::clone(
                     self.gamerules
                         .as_ref()
                         .expect("Checked if set")
@@ -196,17 +193,16 @@ impl eframe::App for WhistApp {
                 && let Ok(resp) = self.hand_builder.ui(ui, &self.players)
             {
                 if let Some(result) = resp.inner {
-                    debug!("Some result found");
                     match result {
                         Ok(hand) => {
-                            let score = hand.get_score();
-                            self.players.update_score(&hand.contractors, score);
-                            debug!("score : {score}");
+                            if let Err(e) = self.players.update_score(&hand.get_contractors_score())
+                            {
+                                error!("Error : {e}");
+                            }
                         }
                         Err(e) => error!("{e}"),
                     }
                 } else if resp.should_close() {
-                    debug!("No result");
                     self.pending = false;
                 }
             }

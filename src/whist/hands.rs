@@ -1,11 +1,12 @@
 use egui::ModalResponse;
-use log::debug;
+use log::{debug, error};
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
+use std::{collections::HashMap, rc::Rc};
 use whist::game::{
     GameError,
-    hand::{Hand, HandBuilder, HandRecap, InputError, InputRequest},
-    players::{Contractors, PlayerId, Players},
+    contractors::Contractors,
+    hand::{Hand, HandBuilder, InputError, InputRequest},
+    players::{PlayerId, PlayerIdAndScore, Players},
     rules::Contract,
 };
 
@@ -20,6 +21,8 @@ pub struct HandBuilderGUI {
     pub hand_builder: Option<HandBuilder>,
     #[serde(skip)]
     requester: RequesterGui,
+    #[serde(skip)]
+    show_point_modal: bool,
 }
 
 impl HandBuilderGUI {
@@ -28,18 +31,16 @@ impl HandBuilderGUI {
             players,
             hand_builder: None,
             requester: RequesterGui::default(),
+            show_point_modal: false,
         }
     }
 
-    pub fn new_hand(&mut self, contract: Arc<Contract>) {
+    pub fn new_hand(&mut self, contract: Rc<Contract>) {
         self.hand_builder = Some(HandBuilder::new(contract));
         self.requester.clear();
     }
 
-    fn get_next_id(
-        &self,
-        names: &mut std::collections::hash_set::Iter<'_, String>,
-    ) -> IoResult<PlayerId> {
+    fn get_next_id(&self, names: &mut indexmap::set::Iter<'_, String>) -> IoResult<PlayerId> {
         let id = self
             .players
             .get_id(
@@ -63,8 +64,18 @@ impl HandBuilderGUI {
                 let id2 = self.get_next_id(&mut names)?;
                 Ok(Contractors::Team(id1, id2))
             }
-            4 => Ok(Contractors::Other),
-            _ => unreachable!(),
+            3 => {
+                let mut out = Vec::new();
+                for score in self
+                    .requester
+                    .points
+                    .ok_or(InputError::InvalidInput("Points not set".to_owned()))?
+                {
+                    out.push(PlayerIdAndScore::new(self.get_next_id(&mut names)?, score));
+                }
+                Ok(Contractors::Other(out))
+            }
+            _ => Err(GameError::TooManyPlayer),
         }
     }
 
@@ -84,10 +95,28 @@ impl HandBuilderGUI {
             .into_iter();
 
         let resp = egui::Modal::new("new_hand".into()).show(ui.ctx(), |ui| {
+            if self.show_point_modal {
+                let order: HashMap<String, usize> = players
+                    .names()
+                    .into_iter()
+                    .enumerate()
+                    .map(|(i, n)| (n, i))
+                    .collect();
+
+                #[expect(clippy::indexing_slicing)]
+                self.requester
+                    .selected_names
+                    .sort_by(|a, b| order[a].cmp(&order[b]));
+                let resp = self.show_point_modal_ui(ui);
+                if resp.should_close() {
+                    self.show_point_modal = false;
+                }
+            }
+
             let n = match requests.next().expect("Always at least 1 element") {
                 InputRequest::ContractorsSolo => 1,
                 InputRequest::ContractorsTeam => 2,
-                InputRequest::ContractorsOther => 4,
+                InputRequest::ContractorsOther => 3,
                 _ => unreachable!(),
             };
             let ready = self.requester.show_names(ui, &players.names(), n);
@@ -110,6 +139,12 @@ impl HandBuilderGUI {
                 },
                 |ui| {
                     if ui.add_enabled(ready, egui::Button::new("Ok")).clicked() {
+                        if self.requester.selected_names.len() == 3
+                            && self.requester.points.is_none()
+                        {
+                            self.show_point_modal = true;
+                            return None;
+                        }
                         let hand_result: IoResult<Hand> = (|| {
                             let c = self.create_contractors(n)?;
                             let mut builder = self.hand_builder.take().expect("Is not None");
@@ -134,9 +169,30 @@ impl HandBuilderGUI {
         debug!("resp : {:?}", resp.inner);
         Ok(resp)
     }
+
+    fn show_point_modal_ui(&mut self, ui: &egui::Ui) -> ModalResponse<()> {
+        if self.requester.points.is_none() {
+            self.requester.points = Some([0, 0, 0]);
+        }
+        egui::Modal::new("points modal".into()).show(ui.ctx(), |ui| {
+            if let Err(e) = self.requester.show_points(ui) {
+                error!("error: {e}");
+            }
+
+            egui::Sides::new().show(
+                ui,
+                |_| {},
+                |ui| {
+                    if ui.button("Ok").clicked() {
+                        ui.close();
+                    }
+                },
+            );
+        })
+    }
 }
 
-#[derive(Default, Deserialize, Serialize)]
-pub struct HandsHistoric {
-    list: Vec<HandRecap>,
-}
+// #[derive(Default, Deserialize, Serialize)]
+// pub struct HandsHistoric {
+//     list: Vec<HandRecap>,
+// }
