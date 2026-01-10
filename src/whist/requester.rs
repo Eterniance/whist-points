@@ -1,12 +1,15 @@
-use egui::ahash::HashSet;
+use indexmap::IndexSet;
 use log::debug;
 use std::ops::RangeInclusive;
 
+use crate::whist::AppError;
+
 #[derive(Debug, Default)]
 pub struct RequesterGui {
-    pub selected_names: HashSet<String>,
+    pub selected_names: IndexSet<String>,
     pub bid_value: i16,
     pub tricks_value: i16,
+    pub points: Option<[i16; 3]>,
 }
 
 impl RequesterGui {
@@ -27,14 +30,18 @@ impl RequesterGui {
 
             if resp.clicked() {
                 if is_selected {
-                    self.selected_names.remove(name);
+                    self.selected_names.shift_remove(name);
                 } else {
                     self.selected_names.insert(name.clone());
                 }
                 debug!("{:?}", self.selected_names);
             }
         }
-        selected_count == n
+        if n == 3 {
+            selected_count > 0
+        } else {
+            selected_count == n
+        }
     }
 
     pub fn show_bid(&mut self, ui: &mut egui::Ui, range: RangeInclusive<i16>) {
@@ -49,5 +56,25 @@ impl RequesterGui {
             ui.label("Tricks number");
             ui.add(egui::DragValue::new(&mut self.tricks_value).range(0..=13));
         });
+    }
+
+    pub fn show_points(&mut self, ui: &mut egui::Ui) -> Result<(), AppError> {
+        if self.selected_names.len() != 3 {
+            return Err(AppError::ImpossibleState(format!(
+                "Input point Ui is created for {}",
+                self.selected_names.len()
+            )));
+        }
+        let points = self.points.as_mut().expect("Should not be None");
+        for (idx, name) in self.selected_names.iter().enumerate() {
+            ui.horizontal(|ui| {
+                ui.label(name);
+                ui.add(
+                    egui::DragValue::new(points.get_mut(idx).expect("both array matches length"))
+                        .range(-240..=240),
+                );
+            });
+        }
+        Ok(())
     }
 }
