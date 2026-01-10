@@ -1,11 +1,12 @@
+use egui_extras::{Column, TableBuilder};
 use log::{debug, error};
 use std::rc::Rc;
 use whist::game::{
     players::Players,
-    rules::{Contract, GameRules, select_rules},
+    rules::{Contract, GameRules, calculate_players_score, select_rules},
 };
 
-use crate::whist::HandBuilderGUI;
+use crate::whist::{HandBuilderGUI, hands::HandsHistoric};
 
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)]
@@ -17,7 +18,7 @@ pub struct WhistApp {
     pub hand_builder: HandBuilderGUI,
     pub current_contract_idx: usize,
     pub pending: bool,
-    // pub historic: HandsHistoric,
+    pub historic: HandsHistoric,
 }
 
 impl WhistApp {
@@ -127,6 +128,40 @@ impl WhistApp {
                 }
             });
     }
+
+    pub fn score_table_ui(&self, ui: &mut egui::Ui) {
+        let headers_height = 20.0;
+        TableBuilder::new(ui)
+            .columns(Column::remainder().at_least(60.0), 4)
+            .resizable(false)
+            .striped(true)
+            .cell_layout(egui::Layout::top_down(egui::Align::Center))
+            .sense(egui::Sense::click())
+            .stick_to_bottom(true)
+            .max_scroll_height(200.0)
+            .header(headers_height, |mut header| {
+                for name in &self.players.names() {
+                    header.col(|ui| {
+                        ui.add(egui::Label::new(name).truncate());
+                        // ui.add(egui::Separator::default().grow(5.0));
+                    });
+                }
+            })
+            .body(|mut body| {
+                for (row_index, (_, scores)) in self.historic.into_iter().enumerate() {
+                    body.row(headers_height, |mut row| {
+                        for score in scores {
+                            row.col(|ui| {
+                                ui.label(format!("{score}"));
+                            });
+                        }
+                        if row.response().clicked() {
+                            debug!("row clicked : {row_index}");
+                        }
+                    });
+                }
+            });
+    }
 }
 
 impl eframe::App for WhistApp {
@@ -172,7 +207,8 @@ impl eframe::App for WhistApp {
                 return;
             }
 
-            player_grid(ui, &self.players);
+            // player_grid(ui, &self.players);
+            self.score_table_ui(ui);
             ui.separator();
 
             self.select_gamemode_ui(ui);
@@ -195,9 +231,13 @@ impl eframe::App for WhistApp {
                 if let Some(result) = resp.inner {
                     match result {
                         Ok(hand) => {
-                            if let Err(e) = self.players.update_score(&hand.get_contractors_score())
+                            if let Ok(scores) =
+                                calculate_players_score(&hand.get_contractors_score())
                             {
-                                error!("Error : {e}");
+                                self.players.update_score(&scores);
+                                self.historic.push(hand.as_recap(scores));
+                            } else {
+                                error!("Error : Wrong Score");
                             }
                         }
                         Err(e) => error!("{e}"),

@@ -5,7 +5,7 @@ use std::{collections::HashMap, rc::Rc};
 use whist::game::{
     GameError,
     contractors::Contractors,
-    hand::{Hand, HandBuilder, InputError, InputRequest},
+    hand::{Hand, HandBuilder, HandRecap, InputError, InputRequest},
     players::{PlayerId, PlayerIdAndScore, Players},
     rules::Contract,
 };
@@ -140,9 +140,7 @@ impl HandBuilderGUI {
                 |ui| {
                     if ui.add_enabled(ready, egui::Button::new("Ok")).clicked() {
                         let contractors_number = self.requester.selected_names.len();
-                        if contractors_number == 3
-                            && self.requester.points.is_none()
-                        {
+                        if contractors_number == 3 && self.requester.points.is_none() {
                             self.show_point_modal = true;
                             return None;
                         }
@@ -192,7 +190,30 @@ impl HandBuilderGUI {
     }
 }
 
-// #[derive(Default, Deserialize, Serialize)]
-// pub struct HandsHistoric {
-//     list: Vec<HandRecap>,
-// }
+#[derive(Default, Deserialize, Serialize)]
+pub struct HandsHistoric {
+    list: Vec<HandRecap>,
+    players_scores: Vec<[i16; 4]>,
+}
+
+#[expect(clippy::indexing_slicing)]
+impl HandsHistoric {
+    pub fn push(&mut self, hand_recap: HandRecap) {
+        if let Some(scores) = self.players_scores.last() {
+            let new_scores: [i16; 4] = std::array::from_fn(|i| scores[i] + hand_recap.scores[i]);
+            self.players_scores.push(new_scores);
+        } else {
+            self.players_scores.push(hand_recap.scores);
+        }
+        self.list.push(hand_recap);
+    }
+}
+
+impl<'a> IntoIterator for &'a HandsHistoric {
+    type Item = (&'a HandRecap, &'a [i16; 4]);
+    type IntoIter = std::iter::Zip<std::slice::Iter<'a, HandRecap>, std::slice::Iter<'a, [i16; 4]>>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.list.iter().zip(self.players_scores.iter())
+    }
+}
