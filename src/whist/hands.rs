@@ -48,7 +48,7 @@ impl HandBuilderGUI {
                     .next()
                     .expect("Cannot call function without setting self.requester"),
             )
-            .ok_or(InputError::InvalidInput("Player ID mismatch".to_owned()))?;
+            .ok_or(InputError::InvalidInput("Player ID mismatch"))?;
         Ok(id)
     }
 
@@ -69,7 +69,7 @@ impl HandBuilderGUI {
                 for score in self
                     .requester
                     .points
-                    .ok_or(InputError::InvalidInput("Points not set".to_owned()))?
+                    .ok_or(InputError::InvalidInput("Points not set"))?
                 {
                     out.push(PlayerIdAndScore::new(self.get_next_id(&mut names)?, score));
                 }
@@ -85,7 +85,7 @@ impl HandBuilderGUI {
         players: &Players,
     ) -> IoResult<ModalResponse<Option<IoResult<Hand>>>> {
         if self.hand_builder.is_none() {
-            return Err(InputError::InvalidInput("No contract set".to_owned()).into());
+            return Err(InputError::InvalidInput("No contract set").into());
         }
         let mut requests = self
             .hand_builder
@@ -139,20 +139,20 @@ impl HandBuilderGUI {
                 },
                 |ui| {
                     if ui.add_enabled(ready, egui::Button::new("Ok")).clicked() {
-                        if self.requester.selected_names.len() == 3
+                        let contractors_number = self.requester.selected_names.len();
+                        if contractors_number == 3
                             && self.requester.points.is_none()
                         {
                             self.show_point_modal = true;
                             return None;
                         }
                         let hand_result: IoResult<Hand> = (|| {
-                            let c = self.create_contractors(n)?;
+                            let c = self.create_contractors(contractors_number)?;
                             let mut builder = self.hand_builder.take().expect("Is not None");
                             builder.set_contractors(c)?;
                             builder.set_bid(self.requester.bid_value)?;
                             builder.set_tricks(self.requester.tricks_value);
                             let hand = builder.build()?;
-                            debug!("hand {hand:#?}");
                             Ok(hand)
                         })();
 

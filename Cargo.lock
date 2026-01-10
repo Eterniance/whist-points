@@ -3150,7 +3150,7 @@ dependencies = [
 [[package]]
 name = "whist"
 version = "0.1.0"
-source = "git+https://github.com/eterniance/whist?branch=main#20689dba8e4b11ad9390013bc386de9cea626c8c"
+source = "git+https://github.com/eterniance/whist?branch=main#977cc6df20a307d1cbebb7ece4ee2c28b316f90f"
 dependencies = [
  "itertools",
  "serde",
