@@ -10,21 +10,39 @@ use crate::whist::{HandBuilderGUI, hands::HandsHistoric};
 
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)]
-#[derive(Default)]
 pub struct WhistApp {
     pub players: Players,
     pub player_field: String,
-    pub gamerules: Option<(GameRules, Vec<Rc<Contract>>)>,
+    pub contracts: Vec<Rc<Contract>>,
     pub hand_builder: HandBuilderGUI,
     pub current_contract_idx: usize,
     pub pending: bool,
     pub historic: HandsHistoric,
 }
 
+impl Default for WhistApp {
+    fn default() -> Self {
+        let gamerules = select_rules(&GameRules::Dutch)
+            .into_iter()
+            .map(Rc::new)
+            .collect();
+        Self {
+            contracts: gamerules,
+            players: Players::default(),
+            player_field: String::default(),
+            hand_builder: HandBuilderGUI::default(),
+            current_contract_idx: 0,
+            pending: false,
+            historic: HandsHistoric::default(),
+        }
+    }
+}
+
 impl WhistApp {
     /// Called once before the first frame.
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        cc.egui_ctx.set_pixels_per_point(1.2);
+        cc.egui_ctx.set_style(egui::Style::default());
+        cc.egui_ctx.set_pixels_per_point(2.);
 
         let mut style = (*cc.egui_ctx.style()).clone();
         style
@@ -62,20 +80,6 @@ impl WhistApp {
         *self = Default::default();
     }
 
-    pub fn select_rules_ui(&mut self, ui: &mut egui::Ui) {
-        let mut selected = None;
-        ui.label("Select gamemode:");
-        ui.selectable_value(&mut selected, Some(GameRules::Dutch), "Dutch")
-            .on_hover_text("Basic game mode");
-        ui.selectable_value(&mut selected, Some(GameRules::French), "French")
-            .on_hover_text("Some other rules");
-
-        if let Some(rules) = selected {
-            let modes = select_rules(&rules).into_iter().map(Rc::new).collect();
-            self.gamerules = Some((rules, modes));
-        }
-    }
-
     pub fn select_players_ui(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             ui.label("Add a new player:");
@@ -109,7 +113,7 @@ impl WhistApp {
     }
 
     pub fn select_gamemode_ui(&mut self, ui: &mut egui::Ui) {
-        let contracts = &self.gamerules.as_ref().expect("Checked if set").1;
+        let contracts = &self.contracts;
         let current_contract_name = contracts
             .get(self.current_contract_idx)
             .expect("Index should be inbound")
@@ -132,7 +136,12 @@ impl WhistApp {
     pub fn score_table_ui(&self, ui: &mut egui::Ui) {
         let headers_height = 20.0;
         TableBuilder::new(ui)
-            .columns(Column::remainder().at_least(60.0), 4)
+            .columns(
+                Column::remainder()
+                    .auto_size_this_frame(true)
+                    .at_least(60.0),
+                4,
+            )
             .resizable(false)
             .striped(true)
             .cell_layout(egui::Layout::top_down(egui::Align::Center))
@@ -186,20 +195,6 @@ impl eframe::App for WhistApp {
 
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.heading("Whist Calculator");
-
-            if self.gamerules.is_none() {
-                self.select_rules_ui(ui);
-                return;
-            }
-
-            ui.label(format!(
-                "Current rules: {}",
-                self.gamerules
-                    .as_ref()
-                    .expect("Value set earlier")
-                    .0
-                    .clone()
-            ));
             ui.separator();
 
             if self.players.list.len() != 4 {
@@ -216,10 +211,7 @@ impl eframe::App for WhistApp {
             if ui.button("New hand").clicked() {
                 self.pending = true;
                 self.hand_builder.new_hand(Rc::clone(
-                    self.gamerules
-                        .as_ref()
-                        .expect("Checked if set")
-                        .1
+                    self.contracts
                         .get(self.current_contract_idx)
                         .expect("Inbound"),
                 ));
