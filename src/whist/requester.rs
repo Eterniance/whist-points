@@ -47,14 +47,22 @@ impl RequesterGui {
     pub fn show_bid(&mut self, ui: &mut egui::Ui, range: RangeInclusive<i16>) {
         ui.horizontal(|ui| {
             ui.label("Tricks to win ?");
-            ui.add(egui::DragValue::new(&mut self.bid_value).range(range));
+            ui.add(
+                egui::DragValue::new(&mut self.bid_value)
+                    .range(range)
+                    .speed(0.05),
+            );
         });
     }
 
     pub fn show_tricks(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             ui.label("Tricks number");
-            ui.add(egui::DragValue::new(&mut self.tricks_value).range(0..=13));
+            ui.add(
+                egui::DragValue::new(&mut self.tricks_value)
+                    .range(0..=13)
+                    .speed(0.05),
+            );
         });
     }
 
@@ -71,7 +79,8 @@ impl RequesterGui {
                 ui.label(name);
                 ui.add(
                     egui::DragValue::new(points.get_mut(idx).expect("both array matches length"))
-                        .range(-240..=240),
+                        .range(-240..=240)
+                        .speed(0.1),
                 );
             });
         }

@@ -1,3 +1,4 @@
+use egui::vec2;
 use egui_extras::{Column, TableBuilder};
 use log::{debug, error};
 use std::rc::Rc;
@@ -22,18 +23,18 @@ pub struct WhistApp {
 
 impl Default for WhistApp {
     fn default() -> Self {
-        let gamerules = select_rules(&GameRules::Dutch)
+        let contracts = select_rules(&GameRules::Dutch)
             .into_iter()
             .map(Rc::new)
             .collect();
         Self {
-            contracts: gamerules,
-            players: Players::default(),
-            player_field: String::default(),
-            hand_builder: HandBuilderGUI::default(),
-            current_contract_idx: 0,
-            pending: false,
-            historic: HandsHistoric::default(),
+            contracts,
+            players: Default::default(),
+            player_field: Default::default(),
+            hand_builder: Default::default(),
+            current_contract_idx: Default::default(),
+            pending: Default::default(),
+            historic: Default::default(),
         }
     }
 }
@@ -45,6 +46,8 @@ impl WhistApp {
         cc.egui_ctx.set_pixels_per_point(2.);
 
         let mut style = (*cc.egui_ctx.style()).clone();
+        style.spacing.button_padding = vec2(10., 8.);
+        style.spacing.interact_size = vec2(60., 30.);
         style
             .text_styles
             .get_mut(&egui::TextStyle::Body)
@@ -142,7 +145,6 @@ impl WhistApp {
                     .at_least(60.0),
                 4,
             )
-            .resizable(false)
             .striped(true)
             .cell_layout(egui::Layout::top_down(egui::Align::Center))
             .sense(egui::Sense::click())
