@@ -2,7 +2,7 @@ use indexmap::IndexSet;
 use log::debug;
 use std::ops::RangeInclusive;
 
-use crate::whist::AppError;
+use crate::ui::AppError;
 
 #[derive(Debug, Default)]
 pub struct RequesterGui {
@@ -19,14 +19,19 @@ impl RequesterGui {
 
     pub fn show_names(&mut self, ui: &mut egui::Ui, names: &[String], n: usize) -> bool {
         let selected_count = self.selected_names.len();
-
+        let size = egui::vec2(ui.max_rect().size().x, 1.);
+        // let min_size = dbg!(egui::vec2(186.0, ui.style().spacing.button_padding.y));
         ui.label("Select contractors");
         ui.separator();
         for name in names {
             let is_selected = self.selected_names.contains(name);
             let can_select_more = selected_count < n || is_selected;
 
-            let resp = ui.add_enabled(can_select_more, egui::Button::selectable(is_selected, name));
+            let resp = ui
+                .add_enabled_ui(can_select_more, |ui| {
+                    ui.add_sized(size, egui::Button::selectable(is_selected, name))
+                })
+                .inner;
 
             if resp.clicked() {
                 if is_selected {
@@ -74,6 +79,7 @@ impl RequesterGui {
             )));
         }
         let points = self.points.as_mut().expect("Should not be None");
+        ui.label("Custom points input");
         for (idx, name) in self.selected_names.iter().enumerate() {
             ui.horizontal(|ui| {
                 ui.label(name);

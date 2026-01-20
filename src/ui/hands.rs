@@ -10,7 +10,7 @@ use whist::game::{
     rules::Contract,
 };
 
-use crate::whist::requester::RequesterGui;
+use crate::ui::requester::RequesterGui;
 
 type IoResult<T> = Result<T, GameError>;
 
@@ -198,6 +198,44 @@ pub struct HandsHistoric {
 
 #[expect(clippy::indexing_slicing)]
 impl HandsHistoric {
+    pub fn show_hand(
+        &self,
+        ui: &egui::Ui,
+        row_idx: usize,
+        players: &[String],
+    ) -> ModalResponse<()> {
+        let hand = &self.list[row_idx];
+        egui::Modal::new(format!("Hand {row_idx}").into()).show(ui.ctx(), |ui| {
+            ui.label(format!("Mode: {}", hand.gamemode_name));
+            ui.label(format!("Tricks: {}", hand.tricks));
+            if let Some(bid) = hand.bid {
+                ui.label(format!("Bid: {bid}"));
+            }
+            ui.separator();
+            let vec_pias = hand.contractors.as_pias();
+            ui.horizontal(|ui| {
+                for pias in &vec_pias {
+                    let (id, score) = pias.as_components();
+                    let name = players[*id].clone();
+                    ui.vertical(|ui| {
+                        ui.label(name);
+                        ui.label(format!("{score}"));
+                    });
+                }
+            });
+
+            egui::Sides::new().show(
+                ui,
+                |_| {},
+                |ui| {
+                    if ui.button("Ok").clicked() {
+                        ui.close();
+                    }
+                },
+            );
+        })
+    }
+
     pub fn push(&mut self, hand_recap: HandRecap) {
         if let Some(scores) = self.players_scores.last() {
             let new_scores: [i16; 4] = std::array::from_fn(|i| scores[i] + hand_recap.scores[i]);
@@ -206,6 +244,25 @@ impl HandsHistoric {
             self.players_scores.push(hand_recap.scores);
         }
         self.list.push(hand_recap);
+    }
+
+    pub fn len(&self) -> usize {
+        assert_eq!(
+            self.list.len(),
+            self.players_scores.len(),
+            "Length difference would imply a misuse of the struct"
+        );
+        self.list.len()
+    }
+
+    pub fn remove_last(&mut self) {
+        assert_eq!(
+            self.list.len(),
+            self.players_scores.len(),
+            "Length difference would imply a misuse of the struct"
+        );
+        self.list.pop();
+        self.players_scores.pop();
     }
 }
 

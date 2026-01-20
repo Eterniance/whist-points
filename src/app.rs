@@ -7,7 +7,7 @@ use whist::game::{
     rules::{Contract, GameRules, calculate_players_score, select_rules},
 };
 
-use crate::whist::{HandBuilderGUI, hands::HandsHistoric};
+use crate::ui::{HandBuilderGUI, hands::HandsHistoric};
 
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)]
@@ -19,6 +19,7 @@ pub struct WhistApp {
     pub current_contract_idx: usize,
     pub pending: bool,
     pub historic: HandsHistoric,
+    pub hand_detail: Option<usize>,
 }
 
 impl Default for WhistApp {
@@ -35,6 +36,7 @@ impl Default for WhistApp {
             current_contract_idx: Default::default(),
             pending: Default::default(),
             historic: Default::default(),
+            hand_detail: Default::default(),
         }
     }
 }
@@ -136,7 +138,7 @@ impl WhistApp {
             });
     }
 
-    pub fn score_table_ui(&self, ui: &mut egui::Ui) {
+    pub fn score_table_ui(&mut self, ui: &mut egui::Ui) {
         let headers_height = 20.0;
         TableBuilder::new(ui)
             .columns(
@@ -159,7 +161,7 @@ impl WhistApp {
                 }
             })
             .body(|mut body| {
-                for (row_index, (_, scores)) in self.historic.into_iter().enumerate() {
+                for (row_index, (_, scores)) in (&self.historic).into_iter().enumerate() {
                     body.row(headers_height, |mut row| {
                         for score in scores {
                             row.col(|ui| {
@@ -167,7 +169,7 @@ impl WhistApp {
                             });
                         }
                         if row.response().clicked() {
-                            debug!("row clicked : {row_index}");
+                            self.hand_detail = Some(row_index);
                         }
                     });
                 }
@@ -210,6 +212,13 @@ impl eframe::App for WhistApp {
 
             self.select_gamemode_ui(ui);
 
+            if let Some(row_idx) = self.hand_detail {
+                let resp = self.historic.show_hand(ui, row_idx, &self.players.names());
+                if resp.should_close() {
+                    self.hand_detail = None;
+                }
+            }
+
             if ui.button("New hand").clicked() {
                 self.pending = true;
                 self.hand_builder.new_hand(Rc::clone(
@@ -239,6 +248,10 @@ impl eframe::App for WhistApp {
                 } else if resp.should_close() {
                     self.pending = false;
                 }
+            }
+
+            if ui.button("Remove last hand").clicked() {
+                self.historic.remove_last();
             }
 
             ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
