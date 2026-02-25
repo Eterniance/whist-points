@@ -2,7 +2,7 @@ use crate::ui::requester::RequesterGui;
 use egui::ModalResponse;
 use log::{debug, error};
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, rc::Rc};
+use std::collections::HashMap;
 use whist_game::{
     Contract, GameError, Hand, HandRecap, InputError, PlayerId, Players, hand::HandBuilder,
     hand::InputRequest,
@@ -54,7 +54,7 @@ impl HandBuilderGUI {
         }
         let mut contractors = vec![];
         let mut names = self.requester.selected_names.iter();
-        for name in &self.requester.selected_names {
+        for _ in &self.requester.selected_names {
             let id = self.get_next_id(&mut names)?;
             contractors.push(id);
         }
@@ -128,8 +128,8 @@ impl HandBuilderGUI {
                             let c = self.create_contractors(contractors_number)?;
                             let mut builder = self.hand_builder.take().expect("Is not None");
                             builder.set_contractors(&c)?;
-                            builder.set_bid(self.requester.bid_value)?;
-                            builder.set_tricks(&[self.requester.tricks_value]);
+                            builder.set_bid(self.requester.bid_value.0)?;
+                            builder.set_tricks(&[self.requester.tricks_value.0])?;
                             let hand = builder.build()?;
                             Ok(hand)
                         })();

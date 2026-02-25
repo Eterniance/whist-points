@@ -2,14 +2,13 @@ use indexmap::IndexSet;
 use log::debug;
 use std::ops::RangeInclusive;
 
-use crate::ui::AppError;
-use whist_game::Tricks;
+use crate::ui::{AppError, TricksGui};
 
 #[derive(Debug)]
 pub struct RequesterGui {
     pub selected_names: IndexSet<String>,
-    pub bid_value: Tricks,
-    pub tricks_value: Tricks,
+    pub bid_value: TricksGui,
+    pub tricks_value: TricksGui,
     pub points: Option<[i16; 3]>,
 }
 
@@ -17,8 +16,8 @@ impl Default for RequesterGui {
     fn default() -> Self {
         Self {
             selected_names: IndexSet::default(),
-            bid_value: Tricks::new(0).expect("Withing range"),
-            tricks_value: Tricks::new(0).expect("Withing range"),
+            bid_value: TricksGui::new(0).expect("Withing range"),
+            tricks_value: TricksGui::new(0).expect("Withing range"),
             points: None,
         }
     }
@@ -66,7 +65,7 @@ impl RequesterGui {
         ui.horizontal(|ui| {
             ui.label("Tricks to win ?");
             ui.add(
-                egui::DragValue::new(&mut self.bid_value.get())
+                egui::DragValue::new(&mut self.bid_value)
                     .range(range)
                     .speed(0.05),
             );
@@ -77,7 +76,7 @@ impl RequesterGui {
         ui.horizontal(|ui| {
             ui.label("Tricks number");
             ui.add(
-                egui::DragValue::new(&mut self.tricks_value.get())
+                egui::DragValue::new(&mut self.tricks_value)
                     .range(0..=13)
                     .speed(0.05),
             );

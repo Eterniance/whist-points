@@ -112,7 +112,7 @@ impl WhistApp {
                     response.request_focus();
                 });
 
-                player_grid(ui, &players_builder);
+                player_grid(ui, players_builder);
 
                 if should_build {
                     state = state.build().unwrap();
@@ -249,7 +249,7 @@ impl eframe::App for WhistApp {
             if self.pending
                 && let Ok(resp) = self.hand_builder.as_mut().unwrap().ui(
                     ui,
-                    &self
+                    self
                         .players_state
                         .players()
                         .expect("Builder phase finished"),
@@ -262,7 +262,7 @@ impl eframe::App for WhistApp {
                                 self.players_state
                                     .players_mut()
                                     .expect("Builder phase finished")
-                                    .update_score(&scores);
+                                    .update_score(&scores).unwrap();
                                 self.historic.push(hand.as_recap(scores));
                             } else {
                                 error!("Error : Wrong Score");
@@ -314,7 +314,7 @@ fn player_grid(ui: &mut egui::Ui, players_builder: &PlayersBuilder) {
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
-enum PlayersState {
+pub enum PlayersState {
     Building(PlayersBuilder),
     Playing(Players),
 }
@@ -332,7 +332,7 @@ impl PlayersState {
                 let players = builder.build()?;
                 Ok(Self::Playing(players))
             }
-            PlayersState::Playing(_) => Err("Players already set".into()),
+            Self::Playing(_) => Err("Players already set".into()),
         }
     }
 
