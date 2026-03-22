@@ -115,7 +115,7 @@ impl WhistApp {
                 player_grid(ui, players_builder);
 
                 if should_build {
-                    state = state.build().unwrap();
+                    state = state.build().expect("Exactly 4 players set");
                     if let PlayersState::Playing(players) = &state {
                         self.hand_builder = Some(HandBuilderGUI::new(players.clone()));
                     }
@@ -238,22 +238,28 @@ impl eframe::App for WhistApp {
 
             if ui.button("New hand").clicked() {
                 self.pending = true;
-                self.hand_builder.as_mut().unwrap().new_hand(
-                    self.contracts
-                        .get(self.current_contract_idx)
-                        .expect("Inbound")
-                        .clone(),
-                );
+                self.hand_builder
+                    .as_mut()
+                    .expect("Hand builder exists if player state is 'Playing'")
+                    .new_hand(
+                        self.contracts
+                            .get(self.current_contract_idx)
+                            .expect("Inbound")
+                            .clone(),
+                    );
                 debug!("{}", self.current_contract_idx);
             }
             if self.pending
-                && let Ok(resp) = self.hand_builder.as_mut().unwrap().ui(
-                    ui,
-                    self
-                        .players_state
-                        .players()
-                        .expect("Builder phase finished"),
-                )
+                && let Ok(resp) = self
+                    .hand_builder
+                    .as_mut()
+                    .expect("Hand builder exists if player state is 'Playing'")
+                    .ui(
+                        ui,
+                        self.players_state
+                            .players()
+                            .expect("Builder phase finished"),
+                    )
             {
                 if let Some(result) = resp.inner {
                     match result {
@@ -262,7 +268,8 @@ impl eframe::App for WhistApp {
                                 self.players_state
                                     .players_mut()
                                     .expect("Builder phase finished")
-                                    .update_score(&scores).unwrap();
+                                    .update_score(&scores)
+                                    .expect("Non zero score sum shoud not be possible");
                                 self.historic.push(hand.as_recap(scores));
                             } else {
                                 error!("Error : Wrong Score");

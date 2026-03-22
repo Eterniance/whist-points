@@ -28,12 +28,11 @@ fn main() -> eframe::Result {
 // When compiling to web using trunk:
 #[cfg(target_arch = "wasm32")]
 fn main() {
-    // safet: Constructors called only once because it is
-    // called before any other instantiation.
-
-    // unsafe {
-    //     __wasm_call_ctors();
-    // }
+    // SAFETY: Constructors called only once because it
+    // is called before any other instantiation.
+    unsafe {
+        __wasm_call_ctors();
+    }
     use eframe::wasm_bindgen::JsCast as _;
 
     // Redirect `log` message to `console.log` and friends:
@@ -80,7 +79,7 @@ fn main() {
 
 // Explicitly export constructors for Wasm
 // for the `inventory` crate. See https://docs.rs/inventory/0.3.21/inventory/#webassembly-and-constructors
-// #[cfg(target_family = "wasm")]
-// unsafe extern "C" {
-//     fn __wasm_call_ctors();
-// }
+#[cfg(target_family = "wasm")]
+unsafe extern "C" {
+    fn __wasm_call_ctors();
+}

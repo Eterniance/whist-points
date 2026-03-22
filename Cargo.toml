@@ -20,8 +20,8 @@ eframe = { version = "0.33.0", default-features = false, features = [
     "x11",           # To support older Linux distributions (restores one of the default features)
 ] }
 log = "0.4.29"
-whist-game = { path = "../whist", features = ["serde"]}
-# whist = { git = "https://github.com/eterniance/whist", branch = "main", features = ["serde"] }
+# whist-game = { path = "../whist-backend", features = ["serde"]}
+whist-game = { git = "https://github.com/eterniance/whist", branch = "main", features = ["serde"] }
 
 # You only need serde if you want app persistence:
 serde = { version = "1.0.219", features = ["derive"] }
@@ -65,7 +65,6 @@ opt-level = 2
 workspace = true
 
 [workspace.lints.rust]
-unsafe_code = "deny"
 
 elided_lifetimes_in_paths = "warn"
 future_incompatible = { level = "warn", priority = -1 }
