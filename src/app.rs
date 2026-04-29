@@ -1,6 +1,9 @@
 use std::error::Error;
 
-use crate::ui::{HandBuilderGUI, hands::HandsHistoric};
+use crate::{
+    Queens,
+    ui::{HandBuilderGUI, hands::HandsHistoric},
+};
 use egui::vec2;
 use egui_extras::{Column, TableBuilder};
 use log::{debug, error};
@@ -24,7 +27,14 @@ pub struct WhistApp {
 
 impl Default for WhistApp {
     fn default() -> Self {
-        let contracts = default_contracts();
+        let mut contracts = default_contracts();
+        let queens_contract = Contract {
+            name: "Queens".to_owned(),
+            max_bid: None,
+            contractors_kind: 1..=3,
+            gamemode: Box::new(Queens),
+        };
+        contracts.push(queens_contract);
         Self {
             contracts,
             players_state: Default::default(),

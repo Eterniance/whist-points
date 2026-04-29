@@ -3331,7 +3331,7 @@ dependencies = [
 [[package]]
 name = "whist-game"
 version = "0.2.0"
-source = "git+https://github.com/eterniance/whist?branch=main#a50ebf7a6a80f00530888deca4c4049bec7cd354"
+source = "git+https://github.com/eterniance/whist?branch=main#5679ca1486ca95e3984aa3dc15e944a27ea04616"
 dependencies = [
  "dyn-clone",
  "itertools",
@@ -3355,6 +3355,7 @@ dependencies = [
  "log",
  "serde",
  "thiserror 2.0.17",
+ "typetag",
  "wasm-bindgen-futures",
  "web-sys",
  "whist-game",
