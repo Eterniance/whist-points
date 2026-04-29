@@ -36,7 +36,6 @@ impl RequesterGui {
     ) -> bool {
         let selected_count = self.selected_names.len() as u8;
         let size = egui::vec2(ui.max_rect().size().x, 1.);
-        // let min_size = dbg!(egui::vec2(186.0, ui.style().spacing.button_padding.y));
         ui.label("Select contractors");
         ui.separator();
         for name in names {

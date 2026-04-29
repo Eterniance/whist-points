@@ -1,6 +1,6 @@
 use crate::ui::requester::RequesterGui;
 use egui::ModalResponse;
-use log::{debug, error};
+use log::error;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use whist_game::{
@@ -144,7 +144,6 @@ impl HandBuilderGUI {
             );
             hand_res
         });
-        debug!("resp : {:?}", resp.inner);
         Ok(resp)
     }
 
