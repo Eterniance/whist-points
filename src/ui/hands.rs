@@ -1,20 +1,16 @@
+use crate::ui::requester::RequesterGui;
 use egui::ModalResponse;
 use log::{debug, error};
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, rc::Rc};
-use whist::game::{
-    GameError,
-    contractors::Contractors,
-    hand::{Hand, HandBuilder, HandRecap, InputError, InputRequest},
-    players::{PlayerId, PlayerIdAndScore, Players},
-    rules::Contract,
+use std::collections::HashMap;
+use whist_game::{
+    Contract, GameError, Hand, HandRecap, InputError, PlayerId, Players, hand::HandBuilder,
+    hand::InputRequest,
 };
-
-use crate::ui::requester::RequesterGui;
 
 type IoResult<T> = Result<T, GameError>;
 
-#[derive(Default, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize)]
 pub struct HandBuilderGUI {
     pub players: Players,
     #[serde(skip)]
@@ -35,7 +31,7 @@ impl HandBuilderGUI {
         }
     }
 
-    pub fn new_hand(&mut self, contract: Rc<Contract>) {
+    pub fn new_hand(&mut self, contract: Contract) {
         self.hand_builder = Some(HandBuilder::new(contract));
         self.requester.clear();
     }
@@ -52,31 +48,17 @@ impl HandBuilderGUI {
         Ok(id)
     }
 
-    fn create_contractors(&self, contractors_number: usize) -> IoResult<Contractors> {
-        let mut names = self.requester.selected_names.iter();
-        match contractors_number {
-            1 => {
-                let id = self.get_next_id(&mut names)?;
-                Ok(Contractors::Solo(id))
-            }
-            2 => {
-                let id1 = self.get_next_id(&mut names)?;
-                let id2 = self.get_next_id(&mut names)?;
-                Ok(Contractors::Team(id1, id2))
-            }
-            3 => {
-                let mut out = Vec::new();
-                for score in self
-                    .requester
-                    .points
-                    .ok_or(InputError::InvalidInput("Points not set"))?
-                {
-                    out.push(PlayerIdAndScore::new(self.get_next_id(&mut names)?, score));
-                }
-                Ok(Contractors::Other(out))
-            }
-            _ => Err(GameError::TooManyPlayer),
+    fn create_contractors(&self, contractors_number: usize) -> IoResult<Vec<PlayerId>> {
+        if self.requester.selected_names.len() != contractors_number {
+            return Err(InputError::InvalidInput("Incorrect players number").into());
         }
+        let mut contractors = vec![];
+        let mut names = self.requester.selected_names.iter();
+        for _ in &self.requester.selected_names {
+            let id = self.get_next_id(&mut names)?;
+            contractors.push(id);
+        }
+        Ok(contractors)
     }
 
     pub fn ui(
@@ -114,16 +96,14 @@ impl HandBuilderGUI {
             }
 
             let n = match requests.next().expect("Always at least 1 element") {
-                InputRequest::ContractorsSolo => 1,
-                InputRequest::ContractorsTeam => 2,
-                InputRequest::ContractorsOther => 3,
+                InputRequest::PlayersNumber { min, max } => min..=max,
                 _ => unreachable!(),
             };
             let ready = self.requester.show_names(ui, &players.names(), n);
 
             if let Some(InputRequest::Bid { min, max }) = requests.next() {
                 ui.separator();
-                self.requester.show_bid(ui, min..=max);
+                self.requester.show_bid(ui, min.get()..=max.get());
             }
 
             ui.separator();
@@ -147,9 +127,9 @@ impl HandBuilderGUI {
                         let hand_result: IoResult<Hand> = (|| {
                             let c = self.create_contractors(contractors_number)?;
                             let mut builder = self.hand_builder.take().expect("Is not None");
-                            builder.set_contractors(c)?;
-                            builder.set_bid(self.requester.bid_value)?;
-                            builder.set_tricks(self.requester.tricks_value);
+                            builder.set_contractors(&c)?;
+                            builder.set_bid(self.requester.bid_value.0)?;
+                            builder.set_tricks(&[self.requester.tricks_value.0])?;
                             let hand = builder.build()?;
                             Ok(hand)
                         })();
@@ -207,16 +187,14 @@ impl HandsHistoric {
         let hand = &self.list[row_idx];
         egui::Modal::new(format!("Hand {row_idx}").into()).show(ui.ctx(), |ui| {
             ui.label(format!("Mode: {}", hand.gamemode_name));
-            ui.label(format!("Tricks: {}", hand.tricks));
+            ui.label(format!("Tricks: {:?}", hand.contractors_tricks));
             if let Some(bid) = hand.bid {
                 ui.label(format!("Bid: {bid}"));
             }
             ui.separator();
-            let vec_pias = hand.contractors.as_pias();
             ui.horizontal(|ui| {
-                for pias in &vec_pias {
-                    let (id, score) = pias.as_components();
-                    let name = players[*id].clone();
+                for (id, score) in &hand.contractors_tricks {
+                    let name = players[id.idx()].clone();
                     ui.vertical(|ui| {
                         ui.label(name);
                         ui.label(format!("{score}"));

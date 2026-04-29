@@ -1,21 +1,21 @@
+use std::error::Error;
+
+use crate::ui::{HandBuilderGUI, hands::HandsHistoric};
 use egui::vec2;
 use egui_extras::{Column, TableBuilder};
 use log::{debug, error};
-use std::rc::Rc;
-use whist::game::{
-    players::Players,
-    rules::{Contract, GameRules, calculate_players_score, select_rules},
+use whist_game::{
+    Players, PlayersBuilder,
+    contracts::{Contract, default_contracts},
 };
-
-use crate::ui::{HandBuilderGUI, hands::HandsHistoric};
 
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)]
 pub struct WhistApp {
-    pub players: Players,
+    pub players_state: PlayersState,
     pub player_field: String,
-    pub contracts: Vec<Rc<Contract>>,
-    pub hand_builder: HandBuilderGUI,
+    pub contracts: Vec<Contract>,
+    pub hand_builder: Option<HandBuilderGUI>,
     pub current_contract_idx: usize,
     pub pending: bool,
     pub historic: HandsHistoric,
@@ -24,13 +24,10 @@ pub struct WhistApp {
 
 impl Default for WhistApp {
     fn default() -> Self {
-        let contracts = select_rules(&GameRules::Dutch)
-            .into_iter()
-            .map(Rc::new)
-            .collect();
+        let contracts = default_contracts();
         Self {
             contracts,
-            players: Default::default(),
+            players_state: Default::default(),
             player_field: Default::default(),
             hand_builder: Default::default(),
             current_contract_idx: Default::default(),
@@ -73,9 +70,7 @@ impl WhistApp {
         // Load previous app state (if any).
         // Note that you must enable the `persistence` feature for this to work.
         if let Some(storage) = cc.storage {
-            let mut app: Self = eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default();
-            app.hand_builder.players = app.players.clone();
-            app
+            eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default()
         } else {
             Default::default()
         }
@@ -86,35 +81,50 @@ impl WhistApp {
     }
 
     pub fn select_players_ui(&mut self, ui: &mut egui::Ui) {
-        ui.horizontal(|ui| {
-            ui.label("Add a new player:");
-            let response = ui.text_edit_singleline(&mut self.player_field);
-            let enter_pressed =
-                response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+        let mut state = std::mem::take(&mut self.players_state);
+        match &mut state {
+            PlayersState::Building(players_builder) => {
+                let mut should_build = false;
+                ui.horizontal(|ui| {
+                    ui.label("Add a new player:");
+                    let response = ui.text_edit_singleline(&mut self.player_field);
+                    let enter_pressed =
+                        response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
 
-            let button_clicked = ui
-                .add_enabled(self.players.list.len() < 4, egui::Button::new("Add"))
-                .on_disabled_hover_text("Already 4 players")
-                .clicked();
+                    let button_clicked = ui
+                        .add_enabled(players_builder.players.len() < 4, egui::Button::new("Add"))
+                        .on_disabled_hover_text("Already 4 players")
+                        .clicked();
 
-            if enter_pressed || button_clicked {
-                let player_name = self.player_field.clone();
-                self.player_field.clear();
+                    if enter_pressed || button_clicked {
+                        let player_name = std::mem::take(&mut self.player_field);
 
-                match self.players.add_player(player_name) {
-                    Ok(4) => {
-                        self.hand_builder = HandBuilderGUI::new(self.players.clone());
+                        match players_builder.add_player(&player_name) {
+                            Ok(4) => {
+                                should_build = true;
+                            }
+                            Ok(_) => {}
+                            Err(e) => {
+                                error!("{e}");
+                            }
+                        }
                     }
-                    Ok(_) => {}
-                    Err(e) => {
-                        error!("{e}");
+                    response.request_focus();
+                });
+
+                player_grid(ui, players_builder);
+
+                if should_build {
+                    state = state.build().expect("Exactly 4 players set");
+                    if let PlayersState::Playing(players) = &state {
+                        self.hand_builder = Some(HandBuilderGUI::new(players.clone()));
                     }
                 }
             }
-            response.request_focus();
-        });
 
-        player_grid(ui, &self.players);
+            PlayersState::Playing(_) => {}
+        }
+        self.players_state = state;
     }
 
     pub fn select_gamemode_ui(&mut self, ui: &mut egui::Ui) {
@@ -122,18 +132,13 @@ impl WhistApp {
         let current_contract_name = contracts
             .get(self.current_contract_idx)
             .expect("Index should be inbound")
-            .gamemode
-            .name()
+            .name
             .clone();
         egui::ComboBox::from_label("Select gamemode")
             .selected_text(current_contract_name)
             .show_ui(ui, |ui| {
                 for (idx, contract) in contracts.iter().enumerate() {
-                    ui.selectable_value(
-                        &mut self.current_contract_idx,
-                        idx,
-                        contract.gamemode.name(),
-                    );
+                    ui.selectable_value(&mut self.current_contract_idx, idx, contract.name.clone());
                 }
             });
     }
@@ -153,7 +158,12 @@ impl WhistApp {
             .stick_to_bottom(true)
             .max_scroll_height(200.0)
             .header(headers_height, |mut header| {
-                for name in &self.players.names() {
+                for name in &self
+                    .players_state
+                    .players()
+                    .expect("Builder phase finished")
+                    .names()
+                {
                     header.col(|ui| {
                         ui.add(egui::Label::new(name).truncate());
                         // ui.add(egui::Separator::default().grow(5.0));
@@ -201,19 +211,26 @@ impl eframe::App for WhistApp {
             ui.heading("Whist Calculator");
             ui.separator();
 
-            if self.players.list.len() != 4 {
+            if self.players_state.is_building() {
                 self.select_players_ui(ui);
                 return;
             }
 
-            // player_grid(ui, &self.players);
             self.score_table_ui(ui);
             ui.separator();
 
             self.select_gamemode_ui(ui);
 
             if let Some(row_idx) = self.hand_detail {
-                let resp = self.historic.show_hand(ui, row_idx, &self.players.names());
+                let resp = self.historic.show_hand(
+                    ui,
+                    row_idx,
+                    &self
+                        .players_state
+                        .players()
+                        .expect("Builder phase finished")
+                        .names(),
+                );
                 if resp.should_close() {
                     self.hand_detail = None;
                 }
@@ -221,23 +238,38 @@ impl eframe::App for WhistApp {
 
             if ui.button("New hand").clicked() {
                 self.pending = true;
-                self.hand_builder.new_hand(Rc::clone(
-                    self.contracts
-                        .get(self.current_contract_idx)
-                        .expect("Inbound"),
-                ));
+                self.hand_builder
+                    .as_mut()
+                    .expect("Hand builder exists if player state is 'Playing'")
+                    .new_hand(
+                        self.contracts
+                            .get(self.current_contract_idx)
+                            .expect("Inbound")
+                            .clone(),
+                    );
                 debug!("{}", self.current_contract_idx);
             }
             if self.pending
-                && let Ok(resp) = self.hand_builder.ui(ui, &self.players)
+                && let Ok(resp) = self
+                    .hand_builder
+                    .as_mut()
+                    .expect("Hand builder exists if player state is 'Playing'")
+                    .ui(
+                        ui,
+                        self.players_state
+                            .players()
+                            .expect("Builder phase finished"),
+                    )
             {
                 if let Some(result) = resp.inner {
                     match result {
                         Ok(hand) => {
-                            if let Ok(scores) =
-                                calculate_players_score(&hand.get_contractors_score())
-                            {
-                                self.players.update_score(&scores);
+                            if let Ok(scores) = hand.get_scores() {
+                                self.players_state
+                                    .players_mut()
+                                    .expect("Builder phase finished")
+                                    .update_score(&scores)
+                                    .expect("Non zero score sum should not be possible");
                                 self.historic.push(hand.as_recap(scores));
                             } else {
                                 error!("Error : Wrong Score");
@@ -276,14 +308,56 @@ fn powered_by_egui_and_eframe(ui: &mut egui::Ui) {
     });
 }
 
-fn player_grid(ui: &mut egui::Ui, players: &Players) {
+fn player_grid(ui: &mut egui::Ui, players_builder: &PlayersBuilder) {
     egui::Grid::new("players_list")
         .striped(true)
         .show(ui, |ui| {
-            for player in &players.list {
+            for player in &players_builder.players {
                 ui.label(format!("Player: {}", player.name));
                 ui.label(format!("Score: {}", player.score));
                 ui.end_row();
             }
         });
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub enum PlayersState {
+    Building(PlayersBuilder),
+    Playing(Players),
+}
+
+impl Default for PlayersState {
+    fn default() -> Self {
+        Self::Building(PlayersBuilder::default())
+    }
+}
+
+impl PlayersState {
+    fn build(self) -> Result<Self, Box<dyn Error>> {
+        match self {
+            Self::Building(builder) => {
+                let players = builder.build()?;
+                Ok(Self::Playing(players))
+            }
+            Self::Playing(_) => Err("Players already set".into()),
+        }
+    }
+
+    fn is_building(&self) -> bool {
+        matches!(self, Self::Building(_))
+    }
+
+    fn players(&self) -> Option<&Players> {
+        match self {
+            Self::Playing(players) => Some(players),
+            Self::Building(_) => None,
+        }
+    }
+
+    fn players_mut(&mut self) -> Option<&mut Players> {
+        match self {
+            Self::Playing(players) => Some(players),
+            Self::Building(_) => None,
+        }
+    }
 }
