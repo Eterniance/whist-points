@@ -269,7 +269,7 @@ impl eframe::App for WhistApp {
                                     .players_mut()
                                     .expect("Builder phase finished")
                                     .update_score(&scores)
-                                    .expect("Non zero score sum shoud not be possible");
+                                    .expect("Non zero score sum should not be possible");
                                 self.historic.push(hand.as_recap(scores));
                             } else {
                                 error!("Error : Wrong Score");

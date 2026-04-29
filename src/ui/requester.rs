@@ -16,8 +16,8 @@ impl Default for RequesterGui {
     fn default() -> Self {
         Self {
             selected_names: IndexSet::default(),
-            bid_value: TricksGui::new(0).expect("Withing range"),
-            tricks_value: TricksGui::new(0).expect("Withing range"),
+            bid_value: TricksGui::new(0).expect("Within range"),
+            tricks_value: TricksGui::new(0).expect("Within range"),
             points: None,
         }
     }
