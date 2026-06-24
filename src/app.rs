@@ -2,7 +2,10 @@ use std::error::Error;
 
 use crate::{
     Queens,
-    ui::{HandBuilderGUI, hands::HandsHistoric},
+    ui::{
+        HandBuilderGUI,
+        hands::{HandsHistoric, PendingHand},
+    },
 };
 use egui::vec2;
 use egui_extras::{Column, TableBuilder};
@@ -271,21 +274,39 @@ impl eframe::App for WhistApp {
                             .expect("Builder phase finished"),
                     )
             {
-                if let Some(result) = resp.inner {
-                    match result {
-                        Ok(hand) => {
-                            if let Ok(scores) = hand.get_scores() {
-                                self.players_state
-                                    .players_mut()
-                                    .expect("Builder phase finished")
-                                    .update_score(&scores)
-                                    .expect("Non zero score sum should not be possible");
-                                self.historic.push(hand.as_recap(scores));
-                            } else {
-                                error!("Error : Wrong Score");
+                if let Some(hand) = resp.inner {
+                    match hand {
+                        PendingHand::Classical(result) => match result {
+                            Ok(hand) => {
+                                if let Ok(scores) = hand.get_scores() {
+                                    self.players_state
+                                        .players_mut()
+                                        .expect("Builder phase finished")
+                                        .update_score(&scores)
+                                        .expect("Non zero score sum should not be possible");
+                                    self.historic.push(hand.as_recap(scores));
+                                } else {
+                                    error!("Error : Wrong Score");
+                                }
                             }
+                            Err(e) => error!("{e}"),
+                        },
+                        PendingHand::Custom => {
+                            let recap = self
+                                .hand_builder
+                                .as_mut()
+                                .expect("Hand builder exists if player state is 'Playing'")
+                                .custom_hand_recap()
+                                .expect("All conditions checked");
+
+                            self.players_state
+                                .players_mut()
+                                .expect("Builder phase finished")
+                                .update_score(&recap.scores)
+                                .expect("Non zero score sum should not be possible");
+
+                            self.historic.push(recap);
                         }
-                        Err(e) => error!("{e}"),
                     }
                 } else if resp.should_close() {
                     self.pending = false;

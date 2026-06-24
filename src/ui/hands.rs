@@ -7,8 +7,14 @@ use whist_game::{
     Contract, GameError, Hand, HandRecap, InputError, PlayerId, Players, hand::HandBuilder,
     hand::InputRequest,
 };
+use whist_game::{HandBuildError, Tricks};
 
 type IoResult<T> = Result<T, GameError>;
+
+pub enum PendingHand {
+    Classical(IoResult<Hand>),
+    Custom,
+}
 
 #[derive(Deserialize, Serialize)]
 pub struct HandBuilderGUI {
@@ -16,9 +22,11 @@ pub struct HandBuilderGUI {
     #[serde(skip)]
     pub hand_builder: Option<HandBuilder>,
     #[serde(skip)]
-    requester: RequesterGui,
+    pub requester: RequesterGui,
     #[serde(skip)]
     show_point_modal: bool,
+    #[serde(skip)]
+    custom_points_mode: bool,
 }
 
 impl HandBuilderGUI {
@@ -28,6 +36,7 @@ impl HandBuilderGUI {
             hand_builder: None,
             requester: RequesterGui::default(),
             show_point_modal: false,
+            custom_points_mode: false,
         }
     }
 
@@ -48,6 +57,40 @@ impl HandBuilderGUI {
         Ok(id)
     }
 
+    pub fn custom_hand_recap(&mut self) -> IoResult<HandRecap> {
+        let contractors = self.create_contractors(3)?;
+        let gamemode_name = self
+            .hand_builder
+            .take()
+            .ok_or(HandBuildError("No contract set"))?
+            .contract_name();
+        let mut scores = [0; 4];
+        let points = self
+            .requester
+            .points
+            .ok_or(HandBuildError("No custom points"))?;
+        let mut remaining_score = 0;
+        let mut remaining_idx: usize = 6;
+        for id in &contractors {
+            let point = *points.get(id.idx()).expect("Withing range");
+            *scores.get_mut(id.idx()).expect("Withing range") = point;
+            remaining_score -= point;
+            remaining_idx -= id.idx();
+        }
+        *scores.get_mut(remaining_idx).expect("Withing range") = remaining_score;
+        let hand_recap: HandRecap = HandRecap {
+            scores,
+            gamemode_name,
+            contractors_tricks: contractors
+                .iter()
+                .map(|id| (*id, Tricks::new(0).expect("Withing range")))
+                .collect(),
+            bid: None,
+        };
+        self.requester.clear();
+        Ok(hand_recap)
+    }
+
     fn create_contractors(&self, contractors_number: usize) -> IoResult<Vec<PlayerId>> {
         if self.requester.selected_names.len() != contractors_number {
             return Err(InputError::InvalidInput("Incorrect players number").into());
@@ -65,7 +108,7 @@ impl HandBuilderGUI {
         &mut self,
         ui: &egui::Ui,
         players: &Players,
-    ) -> IoResult<ModalResponse<Option<IoResult<Hand>>>> {
+    ) -> IoResult<ModalResponse<Option<PendingHand>>> {
         if self.hand_builder.is_none() {
             return Err(InputError::InvalidInput("No contract set").into());
         }
@@ -90,6 +133,7 @@ impl HandBuilderGUI {
                     .selected_names
                     .sort_by(|a, b| order[a].cmp(&order[b]));
                 let resp = self.show_point_modal_ui(ui);
+                self.custom_points_mode = resp.inner;
                 if resp.should_close() {
                     self.show_point_modal = false;
                 }
@@ -123,21 +167,25 @@ impl HandBuilderGUI {
                         if contractors_number == 3 && self.requester.points.is_none() {
                             self.show_point_modal = true;
                             return None;
-                        }
-                        let hand_result: IoResult<Hand> = (|| {
-                            let c = self.create_contractors(contractors_number)?;
-                            let mut builder = self.hand_builder.take().expect("Is not None");
-                            builder.set_contractors(&c)?;
-                            builder.set_bid(self.requester.bid_value.0)?;
-                            builder.set_tricks(&[self.requester.tricks_value.0])?;
-                            let hand = builder.build()?;
-                            Ok(hand)
-                        })();
+                        } else if self.custom_points_mode {
+                            self.custom_points_mode = false;
+                            return Some(PendingHand::Custom);
+                        } else {
+                            let hand_result: IoResult<Hand> = (|| {
+                                let c = self.create_contractors(contractors_number)?;
+                                let mut builder = self.hand_builder.take().expect("Is not None");
+                                builder.set_contractors(&c)?;
+                                builder.set_bid(self.requester.bid_value.0)?;
+                                builder.set_tricks(&[self.requester.tricks_value.0])?;
+                                let hand = builder.build()?;
+                                Ok(hand)
+                            })();
 
-                        if hand_result.is_ok() {
-                            ui.close();
+                            if hand_result.is_ok() {
+                                ui.close();
+                            }
+                            return Some(PendingHand::Classical(hand_result));
                         }
-                        return Some(hand_result);
                     }
                     None
                 },
@@ -147,24 +195,26 @@ impl HandBuilderGUI {
         Ok(resp)
     }
 
-    fn show_point_modal_ui(&mut self, ui: &egui::Ui) -> ModalResponse<()> {
+    fn show_point_modal_ui(&mut self, ui: &egui::Ui) -> ModalResponse<bool> {
         if self.requester.points.is_none() {
             self.requester.points = Some([0, 0, 0]);
         }
         egui::Modal::new("points modal".into()).show(ui.ctx(), |ui| {
+            let mut points_ready = false;
             if let Err(e) = self.requester.show_points(ui) {
                 error!("error: {e}");
             }
-
             egui::Sides::new().show(
                 ui,
                 |_| {},
                 |ui| {
                     if ui.button("Ok").clicked() {
+                        points_ready = true;
                         ui.close();
                     }
                 },
             );
+            points_ready
         })
     }
 }
@@ -186,12 +236,12 @@ impl HandsHistoric {
         let hand = &self.list[row_idx];
         egui::Modal::new(format!("Hand {row_idx}").into()).show(ui.ctx(), |ui| {
             ui.label(format!("Mode: {}", hand.gamemode_name));
-            ui.label(format!("Tricks: {:?}", hand.contractors_tricks));
             if let Some(bid) = hand.bid {
                 ui.label(format!("Bid: {bid}"));
             }
             ui.separator();
             ui.horizontal(|ui| {
+                ui.label("Tricks: ");
                 for (id, score) in &hand.contractors_tricks {
                     let name = players[id.idx()].clone();
                     ui.vertical(|ui| {

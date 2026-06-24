@@ -3331,7 +3331,7 @@ dependencies = [
 [[package]]
 name = "whist-game"
 version = "0.2.0"
-source = "git+https://github.com/eterniance/whist?branch=main#5679ca1486ca95e3984aa3dc15e944a27ea04616"
+source = "git+https://github.com/eterniance/whist?branch=main#6fe649f9851867bfeb1bc41c171f4ddf3fe9770b"
 dependencies = [
  "dyn-clone",
  "itertools",

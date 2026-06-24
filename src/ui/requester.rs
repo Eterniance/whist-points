@@ -28,6 +28,10 @@ impl RequesterGui {
         *self = Self::default();
     }
 
+    pub fn custom_points_ready(&self) -> bool {
+        self.selected_names.len() == 3 && self.points.is_some()
+    }
+
     pub fn show_names(
         &mut self,
         ui: &mut egui::Ui,
