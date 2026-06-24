@@ -54,10 +54,10 @@ impl Default for WhistApp {
 impl WhistApp {
     /// Called once before the first frame.
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        cc.egui_ctx.set_style(egui::Style::default());
+        cc.egui_ctx.set_global_style(egui::Style::default());
         cc.egui_ctx.set_pixels_per_point(2.);
 
-        let mut style = (*cc.egui_ctx.style()).clone();
+        let mut style = (*cc.egui_ctx.global_style()).clone();
         style.spacing.button_padding = vec2(10., 8.);
         style.spacing.interact_size = vec2(60., 30.);
         style
@@ -75,7 +75,7 @@ impl WhistApp {
             .get_mut(&egui::TextStyle::Button)
             .expect("Default settings")
             .size = 18.0;
-        cc.egui_ctx.set_style(style);
+        cc.egui_ctx.set_global_style(style);
 
         // This is also where you can customize the look and feel of egui using
         // `cc.egui_ctx.set_visuals` and `cc.egui_ctx.set_fonts`.
@@ -207,10 +207,8 @@ impl eframe::App for WhistApp {
     }
 
     /// Called each time the UI needs repainting, which may be many times per second.
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // Put your widgets into a `SidePanel`, `TopBottomPanel`, `CentralPanel`, `Window` or `Area`.
-        // For inspiration and more examples, go to https://emilk.github.io/egui
-        egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        egui::Panel::top("top_panel").show_inside(ui, |ui| {
             // The top panel is often a good place for a menu bar:
 
             egui::MenuBar::new().ui(ui, |ui| {
@@ -220,7 +218,7 @@ impl eframe::App for WhistApp {
             });
         });
 
-        egui::CentralPanel::default().show(ctx, |ui| {
+        egui::CentralPanel::default().show_inside(ui, |ui| {
             ui.heading("Whist Calculator");
             ui.separator();
 
