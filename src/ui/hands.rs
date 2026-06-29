@@ -71,8 +71,8 @@ impl HandBuilderGUI {
             .ok_or(HandBuildError("No custom points"))?;
         let mut remaining_score = 0;
         let mut remaining_idx: usize = 6;
-        for id in &contractors {
-            let point = *points.get(id.idx()).expect("Withing range");
+        for (i, id) in contractors.iter().enumerate() {
+            let point = *points.get(i).expect("Withing range");
             *scores.get_mut(id.idx()).expect("Withing range") = point;
             remaining_score -= point;
             remaining_idx -= id.idx();
