@@ -3761,7 +3761,7 @@ dependencies = [
 
 [[package]]
 name = "whist-points"
-version = "0.1.0"
+version = "0.2.4"
 dependencies = [
  "async-trait",
  "eframe",

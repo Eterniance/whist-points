@@ -1,6 +1,6 @@
 [package]
 name = "whist-points"
-version = "0.1.0"
+version = "0.2.4"
 edition = "2024"
 include = ["LICENSE-APACHE", "LICENSE-MIT", "**/*.rs", "Cargo.toml"]
 rust-version = "1.92"

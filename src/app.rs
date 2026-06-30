@@ -158,7 +158,7 @@ impl WhistApp {
 
     pub fn score_table_ui(&mut self, ui: &mut egui::Ui) {
         let headers_height = 20.0;
-        let max_scroll_height = ui.available_height() - 200.;
+        let max_scroll_height = ui.available_height() - 210.;
         TableBuilder::new(ui)
             .columns(
                 Column::remainder()
@@ -210,7 +210,6 @@ impl eframe::App for WhistApp {
     /// Called each time the UI needs repainting, which may be many times per second.
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         egui::Panel::top("top_panel").show_inside(ui, |ui| {
-            // The top panel is often a good place for a menu bar:
 
             egui::MenuBar::new().ui(ui, |ui| {
                 if ui.button("Reset game").clicked() {
@@ -220,7 +219,7 @@ impl eframe::App for WhistApp {
         });
 
         egui::CentralPanel::default().show_inside(ui, |ui| {
-            ui.heading("Whist Calculator");
+            ui.heading("Whist Points");
             ui.separator();
 
             if self.players_state.is_building() {
@@ -261,6 +260,7 @@ impl eframe::App for WhistApp {
                     );
                 debug!("{}", self.current_contract_idx);
             }
+            
             if self.pending
                 && let Ok(resp) = self
                     .hand_builder
@@ -317,8 +317,11 @@ impl eframe::App for WhistApp {
             }
 
             ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
+                ui.label(
+                    egui::RichText::new(format!("Version: {}", env!("CARGO_PKG_VERSION")))
+                        .size(10.0),
+                );
                 powered_by_egui_and_eframe(ui);
-                egui::warn_if_debug_build(ui);
             });
         });
     }
