@@ -199,6 +199,59 @@ impl WhistApp {
                 }
             });
     }
+
+    fn handle_new_hand(&mut self, ui: &egui::Ui) {
+        if self.pending
+            && let Ok(resp) = self
+                .hand_builder
+                .as_mut()
+                .expect("Hand builder exists if player state is 'Playing'")
+                .ui(
+                    ui,
+                    self.players_state
+                        .players()
+                        .expect("Builder phase finished"),
+                )
+        {
+            if let Some(hand) = resp.inner {
+                match hand {
+                    PendingHand::Classical(result) => match result {
+                        Ok(hand) => {
+                            if let Ok(scores) = hand.get_scores() {
+                                self.players_state
+                                    .players_mut()
+                                    .expect("Builder phase finished")
+                                    .update_score(&scores)
+                                    .expect("Non zero score sum should not be possible");
+                                self.historic.push(hand.as_recap(scores));
+                            } else {
+                                error!("Error : Wrong Score");
+                            }
+                        }
+                        Err(e) => error!("{e}"),
+                    },
+                    PendingHand::Custom => {
+                        let recap = self
+                            .hand_builder
+                            .as_mut()
+                            .expect("Hand builder exists if player state is 'Playing'")
+                            .custom_hand_recap()
+                            .expect("All conditions checked");
+
+                        self.players_state
+                            .players_mut()
+                            .expect("Builder phase finished")
+                            .update_score(&recap.scores)
+                            .expect("Non zero score sum should not be possible");
+
+                        self.historic.push(recap);
+                    }
+                }
+            } else if resp.should_close() {
+                self.pending = false;
+            }
+        }
+    }
 }
 
 impl eframe::App for WhistApp {
@@ -210,7 +263,6 @@ impl eframe::App for WhistApp {
     /// Called each time the UI needs repainting, which may be many times per second.
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         egui::Panel::top("top_panel").show_inside(ui, |ui| {
-
             egui::MenuBar::new().ui(ui, |ui| {
                 if ui.button("Reset game").clicked() {
                     (*self).reset_game();
@@ -230,91 +282,64 @@ impl eframe::App for WhistApp {
             self.score_table_ui(ui);
             ui.separator();
 
-            self.select_gamemode_ui(ui);
+            #[expect(clippy::indexing_slicing)]
+            ui.columns(2, |columns| {
+                egui::Frame::group(columns[0].style())
+                    .stroke(egui::Stroke::NONE)
+                    .show(&mut columns[0], |ui| {
+                        self.select_gamemode_ui(ui);
 
-            if let Some(row_idx) = self.hand_detail {
-                let resp = self.historic.show_hand(
-                    ui,
-                    row_idx,
-                    &self
-                        .players_state
-                        .players()
-                        .expect("Builder phase finished")
-                        .names(),
-                );
-                if resp.should_close() {
-                    self.hand_detail = None;
-                }
-            }
-
-            if ui.button("New hand").clicked() {
-                self.pending = true;
-                self.hand_builder
-                    .as_mut()
-                    .expect("Hand builder exists if player state is 'Playing'")
-                    .new_hand(
-                        self.contracts
-                            .get(self.current_contract_idx)
-                            .expect("Inbound")
-                            .clone(),
-                    );
-                debug!("{}", self.current_contract_idx);
-            }
-            
-            if self.pending
-                && let Ok(resp) = self
-                    .hand_builder
-                    .as_mut()
-                    .expect("Hand builder exists if player state is 'Playing'")
-                    .ui(
-                        ui,
-                        self.players_state
-                            .players()
-                            .expect("Builder phase finished"),
-                    )
-            {
-                if let Some(hand) = resp.inner {
-                    match hand {
-                        PendingHand::Classical(result) => match result {
-                            Ok(hand) => {
-                                if let Ok(scores) = hand.get_scores() {
-                                    self.players_state
-                                        .players_mut()
-                                        .expect("Builder phase finished")
-                                        .update_score(&scores)
-                                        .expect("Non zero score sum should not be possible");
-                                    self.historic.push(hand.as_recap(scores));
-                                } else {
-                                    error!("Error : Wrong Score");
-                                }
+                        if let Some(row_idx) = self.hand_detail {
+                            let resp = self.historic.show_hand(
+                                ui,
+                                row_idx,
+                                &self
+                                    .players_state
+                                    .players()
+                                    .expect("Builder phase finished")
+                                    .names(),
+                            );
+                            if resp.should_close() {
+                                self.hand_detail = None;
                             }
-                            Err(e) => error!("{e}"),
-                        },
-                        PendingHand::Custom => {
-                            let recap = self
-                                .hand_builder
+                        }
+
+                        if ui.button("New hand").clicked() {
+                            self.pending = true;
+                            self.hand_builder
                                 .as_mut()
                                 .expect("Hand builder exists if player state is 'Playing'")
-                                .custom_hand_recap()
-                                .expect("All conditions checked");
-
-                            self.players_state
-                                .players_mut()
-                                .expect("Builder phase finished")
-                                .update_score(&recap.scores)
-                                .expect("Non zero score sum should not be possible");
-
-                            self.historic.push(recap);
+                                .new_hand(
+                                    self.contracts
+                                        .get(self.current_contract_idx)
+                                        .expect("Inbound")
+                                        .clone(),
+                                );
+                            debug!("{}", self.current_contract_idx);
                         }
-                    }
-                } else if resp.should_close() {
-                    self.pending = false;
-                }
-            }
 
-            if ui.button("Remove last hand").clicked() {
-                self.historic.remove_last();
-            }
+                        self.handle_new_hand(ui);
+
+                        if ui.button("Remove last hand").clicked() {
+                            self.historic.remove_last();
+                        }
+                    });
+
+                columns[1].with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
+                    ui.vertical(|ui| {
+                        let dealer = self
+                            .players_state
+                            .players()
+                            .expect("Builder phase finished")
+                            .names()
+                            .get(self.historic.len() % 4)
+                            .expect("Always 4 players")
+                            .clone();
+                        ui.label(format!("Dealer: {dealer}"));
+                        ui.label(format!("Game played: {}", self.historic.len()));
+                    });
+                });
+            });
 
             ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
                 ui.label(
