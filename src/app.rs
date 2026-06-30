@@ -158,6 +158,7 @@ impl WhistApp {
 
     pub fn score_table_ui(&mut self, ui: &mut egui::Ui) {
         let headers_height = 20.0;
+        let max_scroll_height = ui.available_height() - 200.;
         TableBuilder::new(ui)
             .columns(
                 Column::remainder()
@@ -169,7 +170,7 @@ impl WhistApp {
             .cell_layout(egui::Layout::top_down(egui::Align::Center))
             .sense(egui::Sense::click())
             .stick_to_bottom(true)
-            .max_scroll_height(200.0)
+            .max_scroll_height(max_scroll_height)
             .header(headers_height, |mut header| {
                 for name in &self
                     .players_state
